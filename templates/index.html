@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="description"
+          content="Thrust The Rocket — Hit exactly 10,000 ft in this precision aerospace challenge. Hold to fuel, release to launch, tap to deploy parachutes.">
+    <meta name="theme-color" content="#1B2838">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>Thrust The Rocket — 10k ft Aerospace Challenge</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='Logo.ico') }}">
+    <link rel="shortcut icon" type="image/x-icon" href="{{ url_for('static', filename='Logo.ico') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/logo.png') }}">
+    <link rel="preload" href="{{ url_for('static', filename='models/rocket.glb') }}" as="fetch" crossorigin="anonymous">
+
+    <!-- Fonts: Outfit (modern display) & Plus Jakarta Sans / Inter (clean body) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap"
+          rel="stylesheet">
+
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=3.2">
+
+    <!-- Three.js & GLTFLoader Import Map for 3D Rocket Integration -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="boot-loader" class="boot-loader" aria-hidden="true"></div>
+
+    <!-- ===== Full-screen Game Canvas ===== -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- ===== HUD Overlay (positioned over canvas) ===== -->
+    <div id="hud" class="hud hidden">
+        <div class="hud-left">
+            <div class="hud-item hud-brand-item">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="hud-logo-mini">
+                <span class="hud-brand-tag">AEROSPACE</span>
+            </div>
+            <div class="hud-item" id="hud-altitude">
+                <span class="hud-label">ALT</span>
+                <span class="hud-value" id="hud-alt-value">0</span>
+                <span class="hud-unit">ft</span>
+            </div>
+            <div class="hud-item" id="hud-speed">
+                <span class="hud-label">SPD</span>
+                <span class="hud-value" id="hud-spd-value">0.0</span>
+                <span class="hud-unit">ft/s</span>
+            </div>
+        </div>
+        <div class="hud-center">
+            <div class="hud-item stage-display" id="hud-stage">
+                <span class="hud-value" id="hud-stage-value">READY</span>
+            </div>
+        </div>
+        <div class="hud-right">
+            <div class="hud-item" id="hud-wind">
+                <span class="hud-label">WIND</span>
+                <span class="hud-value" id="hud-wind-value">—</span>
+            </div>
+            <div class="hud-item" id="hud-apogee-display">
+                <span class="hud-label">PEAK</span>
+                <span class="hud-value" id="hud-apogee-value">—</span>
+                <span class="hud-unit">ft</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Fuel Bar (Stage 1 only) ===== -->
+    <div id="fuel-bar-container" class="fuel-bar-container hidden">
+        <div class="fuel-bar-label">FUEL</div>
+        <div class="fuel-bar-track">
+            <div class="fuel-bar-fill" id="fuel-bar-fill"></div>
+            <!-- Sweet-spot marker at ~62% -->
+            <div class="fuel-bar-marker" style="left:62%">
+                <div class="marker-line"></div>
+                <div class="marker-label">10K</div>
+            </div>
+        </div>
+        <div class="fuel-bar-percent" id="fuel-bar-percent">0%</div>
+    </div>
+
+    <!-- ===== Action Prompt (contextual instructions) ===== -->
+    <div id="action-prompt" class="action-prompt hidden">
+        <span id="action-prompt-text">HOLD TO FUEL</span>
+    </div>
+
+    <!-- ===== Countdown Overlay (3-2-1) ===== -->
+    <div id="countdown-overlay" class="countdown-overlay hidden">
+        <span id="countdown-number" class="countdown-number">3</span>
+    </div>
+
+    <!-- ===== Cinematic Opening Overlay ===== -->
+    <div id="cinematic-overlay" class="cinematic-overlay hidden">
+        <!-- Fullscreen Blackout with Typewriter Terminal -->
+        <div id="cinematic-blackout" class="cinematic-blackout">
+            <div class="cinematic-terminal">
+                <div id="terminal-line-1" class="terminal-line"></div>
+                <div id="terminal-line-2" class="terminal-line terminal-line-sub"></div>
+            </div>
+        </div>
+
+        <div class="cinematic-bar-top" id="cinematic-bar-top"></div>
+        <div class="cinematic-bar-bottom" id="cinematic-bar-bottom"></div>
+        <div class="cinematic-hud" id="cinematic-hud">
+            <div class="cinematic-top-row">
+                <div class="cinematic-badge">
+                    <span class="cinematic-rec-dot"></span>
+                    <span class="cinematic-badge-text">LIVE TELEMETRY // CAM 01 [DRONE]</span>
+                </div>
+                <div class="cinematic-time" id="cinematic-time">UTC 14:02:19.4</div>
+            </div>
+            <div class="cinematic-telemetry">
+                <div class="cinematic-step-tag" id="cinematic-step-tag">FACILITY OVERVIEW</div>
+                <div class="cinematic-title" id="cinematic-title">WHITE SANDS MISSILE RANGE</div>
+                <div class="cinematic-subtitle" id="cinematic-subtitle">LAUNCH COMPLEX 33 · DESERT TEST SITE</div>
+                <div class="cinematic-meta" id="cinematic-meta">LAT 32°22'48"N · LON 106°28'24"W · ELEV 3,991 FT</div>
+            </div>
+            <div class="cinematic-crosshair">
+                <div class="crosshair-bracket tl"></div>
+                <div class="crosshair-bracket tr"></div>
+                <div class="crosshair-bracket bl"></div>
+                <div class="crosshair-bracket br"></div>
+                <div class="crosshair-center"></div>
+            </div>
+        </div>
+        <button id="btn-cinematic-skip" class="btn-cinematic-skip" type="button" aria-label="Skip Cinematic" title="Skip cinematic">
+            <svg viewBox="0 0 24 24" class="skip-icon" fill="currentColor">
+                <path d="M3 4l8 8-8 8V4zm10 0l8 8-8 8V4z"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- ===== Title Screen ===== -->
+    <div id="title-screen" class="overlay loading-model">
+        <div class="title-content">
+            <div class="title-logo">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Team Logo" class="team-logo-main">
+                <h1 class="title-main">THRUST<br><span class="title-accent">THE ROCKET</span></h1>
+                <img src="{{ url_for('static', filename='img/Mission.png') }}" alt="Mission logo" class="mission-logo">
+            </div>
+                <div id="rocket-preview" class="rocket-preview" aria-label="Interactive rocket preview"></div>
+            <!--
+            <div class="title-instructions">
+                <div class="instruction-step">
+                    <span class="step-num">1</span>
+                    <span class="step-text">Hold to fuel the rocket</span>
+                </div>
+                <div class="instruction-step">
+                    <span class="step-num">2</span>
+                    <span class="step-text">Release to launch</span>
+                </div>
+                <div class="instruction-step">
+                    <span class="step-num">3</span>
+                    <span class="step-text">Tap at apogee → drogue chute</span>
+                </div>
+                <div class="instruction-step">
+                    <span class="step-num">4</span>
+                    <span class="step-text">Tap at 500 ft → main chute</span>
+                </div>
+            </div> -->
+            <button id="btn-start" class="btn-primary">LAUNCH !</button>
+            <button id="btn-leaderboard-title" class="btn-link">VIEW LEADERBOARD</button>
+        </div>
+    </div>
+
+    <!-- ===== Mission Debrief Screen ===== -->
+    <div id="debrief-screen" class="overlay hidden">
+        <div class="debrief-content">
+            <div class="modal-brand-bar">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="modal-logo-mini">
+                <span class="modal-brand-title">MISSION CONTROL RECORD</span>
+            </div>
+            <h2 id="debrief-title" class="debrief-title">MISSION DEBRIEF</h2>
+            <div id="debrief-status-icon" class="debrief-status-icon">✓</div>
+
+            <div class="debrief-stats">
+                <!-- Altitude -->
+                <div class="stat-group">
+                    <div class="stat-group-header">ALTITUDE</div>
+                    <div class="stat-row">
+                        <span class="stat-label">Apogee Reached</span>
+                        <span class="stat-value" id="stat-apogee">0 ft</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Target</span>
+                        <span class="stat-value">10,000 ft</span>
+                    </div>
+                    <div class="stat-row highlight">
+                        <span class="stat-label">Deviation</span>
+                        <span class="stat-value" id="stat-deviation">±0 ft</span>
+                    </div>
+                    <div class="stat-row score-row">
+                        <span class="stat-label">Altitude Score</span>
+                        <span class="stat-value" id="stat-alt-score">0 / 5,000</span>
+                    </div>
+                </div>
+
+                <!-- Touchdown -->
+                <div class="stat-group">
+                    <div class="stat-group-header">TOUCHDOWN</div>
+                    <div class="stat-row">
+                        <span class="stat-label">Impact Speed</span>
+                        <span class="stat-value" id="stat-touchdown">0 ft/s</span>
+                    </div>
+                    <div class="stat-row score-row">
+                        <span class="stat-label">Touchdown Score</span>
+                        <span class="stat-value" id="stat-td-score">0 / 3,000</span>
+                    </div>
+                </div>
+
+                <!-- Landing Accuracy -->
+                <div class="stat-group">
+                    <div class="stat-group-header">LANDING</div>
+                    <div class="stat-row">
+                        <span class="stat-label">Pad Offset</span>
+                        <span class="stat-value" id="stat-offset">0 ft</span>
+                    </div>
+                    <div class="stat-row score-row">
+                        <span class="stat-label">Landing Score</span>
+                        <span class="stat-value" id="stat-pad-score">0 / 2,000</span>
+                    </div>
+                </div>
+
+                <!-- Total -->
+                <div class="stat-total-bar">
+                    <div class="stat-row total-row">
+                        <span class="stat-label">TOTAL SCORE</span>
+                        <span class="stat-value" id="stat-total">0</span>
+                    </div>
+                    <div class="star-rating" id="star-rating">☆☆☆☆☆</div>
+                </div>
+            </div>
+
+            <!-- Callsign entry -->
+            <div class="callsign-section" id="callsign-section">
+                <input type="text" id="callsign-input"
+                       class="callsign-input"
+                       placeholder="Enter Callsign"
+                       maxlength="20"
+                       autocomplete="off"
+                       spellcheck="false">
+                <button id="btn-submit-score" class="btn-primary">SUBMIT TO LEADERBOARD</button>
+            </div>
+
+            <div class="debrief-actions">
+                <button id="btn-retry" class="btn-secondary">RETRY MISSION</button>
+                <button id="btn-menu" class="btn-secondary">MAIN MENU</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Leaderboard Screen ===== -->
+    <div id="leaderboard-screen" class="overlay hidden">
+        <div class="leaderboard-content">
+            <div class="modal-brand-bar">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="modal-logo-mini">
+                <span class="modal-brand-title">TELEMETRY ARCHIVE</span>
+            </div>
+            <h2 class="leaderboard-title">LEADERBOARD</h2>
+            <div id="leaderboard-list" class="leaderboard-list">
+                <div class="leaderboard-empty">No scores yet. Be the first!</div>
+            </div>
+            <button id="btn-lb-close" class="btn-secondary">CLOSE</button>
+        </div>
+    </div>
+
+    <!-- ===== Game Script (ES6 Module entry point) ===== -->
+    <script type="module" src="{{ url_for('static', filename='js/game.js') }}?v=3.9"></script>
+</body>
+</html>

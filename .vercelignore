@@ -1,0 +1,7 @@
+scores.db
+generate_countdown_voice.py
+Notes.txt
+__pycache__/
+*.pyc
+.git
+.gitignore
