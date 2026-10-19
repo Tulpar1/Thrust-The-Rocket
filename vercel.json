@@ -4,6 +4,10 @@
     {
       "src": "app.py",
       "use": "@vercel/python"
+    },
+    {
+      "src": "static/**",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -12,8 +16,8 @@
       "dest": "/static/$1"
     },
     {
-      "src": "/(favicon\\.ico|Logo\\.ico|Logo\\.png)",
-      "dest": "/static/$1"
+      "src": "/favicon\\.ico",
+      "dest": "/static/Logo.ico"
     },
     {
       "src": "/(.*)",
