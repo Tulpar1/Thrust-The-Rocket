@@ -374,13 +374,21 @@ export class AudioManager {
         this._windFilter = bp;
     }
 
-    /** Set wind intensity 0–1 based on rocket speed. */
+    /** Set wind intensity 0–1 and filter tone from the current airspeed. */
     setWindIntensity(v) {
         if (!this._windGain) return;
+        const intensity = Math.max(0, Math.min(1, v));
+        const now = this.ctx.currentTime;
         this._windGain.gain.linearRampToValueAtTime(
-            Math.max(0, Math.min(1, v)) * 0.35,
-            this.ctx.currentTime + 0.08
+            intensity * 0.35,
+            now + 0.08
         );
+        if (this._windFilter) {
+            this._windFilter.frequency.linearRampToValueAtTime(
+                850 + intensity * 2500,
+                now + 0.12
+            );
+        }
     }
 
     stopWindLoop() {

@@ -10,9 +10,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Thrust The Rocket — 10k ft Aerospace Challenge</title>
-    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='Logo.ico') }}">
-    <link rel="shortcut icon" type="image/x-icon" href="{{ url_for('static', filename='Logo.ico') }}">
-    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/logo.png') }}">
+    <!-- Favicon & Touch Icons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32x32.png') }}?v=4.0">
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ url_for('static', filename='favicon-192x192.png') }}?v=4.0">
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}?v=4.0">
+    <link rel="shortcut icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}?v=4.0">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='favicon-192x192.png') }}?v=4.0">
     <link rel="preload" href="{{ url_for('static', filename='models/rocket.glb') }}" as="fetch" crossorigin="anonymous">
 
     <!-- Fonts: Outfit (modern display) & Plus Jakarta Sans / Inter (clean body) -->
@@ -112,27 +115,10 @@
 
         <div class="cinematic-bar-top" id="cinematic-bar-top"></div>
         <div class="cinematic-bar-bottom" id="cinematic-bar-bottom"></div>
-        <div class="cinematic-hud" id="cinematic-hud">
-            <div class="cinematic-top-row">
-                <div class="cinematic-badge">
-                    <span class="cinematic-rec-dot"></span>
-                    <span class="cinematic-badge-text">LIVE TELEMETRY // CAM 01 [DRONE]</span>
-                </div>
-                <div class="cinematic-time" id="cinematic-time">UTC 14:02:19.4</div>
-            </div>
-            <div class="cinematic-telemetry">
-                <div class="cinematic-step-tag" id="cinematic-step-tag">FACILITY OVERVIEW</div>
-                <div class="cinematic-title" id="cinematic-title">WHITE SANDS MISSILE RANGE</div>
-                <div class="cinematic-subtitle" id="cinematic-subtitle">LAUNCH COMPLEX 33 · DESERT TEST SITE</div>
-                <div class="cinematic-meta" id="cinematic-meta">LAT 32°22'48"N · LON 106°28'24"W · ELEV 3,991 FT</div>
-            </div>
-            <div class="cinematic-crosshair">
-                <div class="crosshair-bracket tl"></div>
-                <div class="crosshair-bracket tr"></div>
-                <div class="crosshair-bracket bl"></div>
-                <div class="crosshair-bracket br"></div>
-                <div class="crosshair-center"></div>
-            </div>
+        <div class="cinematic-binocular" aria-hidden="true">
+            <div class="binocular-lens binocular-lens-left"></div>
+            <div class="binocular-lens binocular-lens-right"></div>
+            <div class="binocular-bridge"></div>
         </div>
         <button id="btn-cinematic-skip" class="btn-cinematic-skip" type="button" aria-label="Skip Cinematic" title="Skip cinematic">
             <svg viewBox="0 0 24 24" class="skip-icon" fill="currentColor">
@@ -143,106 +129,111 @@
 
     <!-- ===== Title Screen ===== -->
     <div id="title-screen" class="overlay loading-model">
+        <!-- Floating Top Bar: Team Application & Instagram -->
+        <div class="title-top-actions">
+            <a href="http://forms.gle/Hx8GVf3w5mtR4YTZ6" target="_blank" rel="noopener noreferrer" class="btn-top-apply" title="İTÜ Lagari Thrust Takım Başvuru Formu">
+                <span>🚀TAKIMA KATIL</span>
+            </a>
+            <a href="https://www.instagram.com/itulagarithrust/" target="_blank" rel="noopener noreferrer" class="btn-top-social ig-btn" title="İTÜ Lagari Thrust (@itulagarithrust)" aria-label="Instagram">
+                <svg viewBox="0 0 24 24" class="svg-social-icon" fill="currentColor">
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                </svg>
+            </a>
+        </div>
+
         <div class="title-content">
             <div class="title-logo">
                 <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Team Logo" class="team-logo-main">
                 <h1 class="title-main">THRUST<br><span class="title-accent">THE ROCKET</span></h1>
                 <img src="{{ url_for('static', filename='img/Mission.png') }}" alt="Mission logo" class="mission-logo">
             </div>
-                <div id="rocket-preview" class="rocket-preview" aria-label="Interactive rocket preview"></div>
-            <!--
-            <div class="title-instructions">
-                <div class="instruction-step">
-                    <span class="step-num">1</span>
-                    <span class="step-text">Hold to fuel the rocket</span>
-                </div>
-                <div class="instruction-step">
-                    <span class="step-num">2</span>
-                    <span class="step-text">Release to launch</span>
-                </div>
-                <div class="instruction-step">
-                    <span class="step-num">3</span>
-                    <span class="step-text">Tap at apogee → drogue chute</span>
-                </div>
-                <div class="instruction-step">
-                    <span class="step-num">4</span>
-                    <span class="step-text">Tap at 500 ft → main chute</span>
-                </div>
-            </div> -->
+            <div id="rocket-preview" class="rocket-preview" aria-label="Interactive rocket preview"></div>
+
             <button id="btn-start" class="btn-primary">LAUNCH !</button>
             <button id="btn-leaderboard-title" class="btn-link">VIEW LEADERBOARD</button>
+
+            <!-- Prominent Team Recruitment Call-to-Action 
+            <div class="title-team-bar">
+                <a href="http://forms.gle/Hx8GVf3w5mtR4YTZ6" target="_blank" rel="noopener noreferrer" class="btn-team-apply-main">
+                    <span class="team-apply-icon">🚀</span>
+                    <span class="team-apply-text">TAKIMA KATIL</span>
+                </a>
+                <a href="https://www.instagram.com/itulagarithrust/" target="_blank" rel="noopener noreferrer" class="title-social-link" title="İTÜ Lagari Thrust Instagram">
+                    <svg viewBox="0 0 24 24" class="svg-social-mini" fill="currentColor">
+                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                    </svg>
+                    <span>@itulagarithrust</span>
+                </a>
+            </div>-->
         </div>
     </div>
 
     <!-- ===== Mission Debrief Screen ===== -->
     <div id="debrief-screen" class="overlay hidden">
         <div class="debrief-content">
-            <div class="modal-brand-bar">
-                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="modal-logo-mini">
-                <span class="modal-brand-title">MISSION CONTROL RECORD</span>
+            <div class="debrief-header">
+                <span class="debrief-tag">FLIGHT REPORT</span>
+                <h2 id="debrief-title" class="debrief-title">BAŞARILI İNİŞ</h2>
             </div>
-            <h2 id="debrief-title" class="debrief-title">MISSION DEBRIEF</h2>
-            <div id="debrief-status-icon" class="debrief-status-icon">✓</div>
 
+            <!-- Hero Score Panel -->
+            <div class="stat-total-bar">
+                <span class="stat-total-label">TOTAL SCORE</span>
+                <span class="stat-total-value" id="stat-total">0</span>
+                <div class="star-rating" id="star-rating">☆☆☆☆☆</div>
+            </div>
+
+            <!-- Simplified 3-Column Telemetry -->
             <div class="debrief-stats">
                 <!-- Altitude -->
                 <div class="stat-group">
                     <div class="stat-group-header">ALTITUDE</div>
-                    <div class="stat-row">
-                        <span class="stat-label">Apogee Reached</span>
-                        <span class="stat-value" id="stat-apogee">0 ft</span>
+                    <div class="stat-main-value" id="stat-apogee">0 ft</div>
+                    <div class="stat-sub-row">
+                        <span class="stat-sub-label">Dev:</span>
+                        <span class="stat-sub-value" id="stat-deviation">±0 ft</span>
                     </div>
-                    <div class="stat-row">
-                        <span class="stat-label">Target</span>
-                        <span class="stat-value">10,000 ft</span>
-                    </div>
-                    <div class="stat-row highlight">
-                        <span class="stat-label">Deviation</span>
-                        <span class="stat-value" id="stat-deviation">±0 ft</span>
-                    </div>
-                    <div class="stat-row score-row">
-                        <span class="stat-label">Altitude Score</span>
-                        <span class="stat-value" id="stat-alt-score">0 / 5,000</span>
-                    </div>
+                    <div class="stat-score-chip" id="stat-alt-score">0 / 5,000</div>
                 </div>
 
                 <!-- Touchdown -->
                 <div class="stat-group">
                     <div class="stat-group-header">TOUCHDOWN</div>
-                    <div class="stat-row">
-                        <span class="stat-label">Impact Speed</span>
-                        <span class="stat-value" id="stat-touchdown">0 ft/s</span>
+                    <div class="stat-main-value" id="stat-touchdown">0 ft/s</div>
+                    <div class="stat-sub-row">
+                        <span class="stat-sub-label">Dmg:</span>
+                        <span class="stat-sub-value" id="stat-damage">0%</span>
                     </div>
-                    <div class="stat-row score-row">
-                        <span class="stat-label">Touchdown Score</span>
-                        <span class="stat-value" id="stat-td-score">0 / 3,000</span>
-                    </div>
+                    <div class="stat-score-chip" id="stat-td-score">0 / 3,000</div>
                 </div>
 
-                <!-- Landing Accuracy -->
+                <!-- Target -->
                 <div class="stat-group">
-                    <div class="stat-group-header">LANDING</div>
-                    <div class="stat-row">
-                        <span class="stat-label">Pad Offset</span>
-                        <span class="stat-value" id="stat-offset">0 ft</span>
+                    <div class="stat-group-header">TARGET</div>
+                    <div class="stat-main-value" id="stat-target-offset">0 ft</div>
+                    <div class="stat-sub-row">
+                        <span class="stat-sub-label">Bonus</span>
                     </div>
-                    <div class="stat-row score-row">
-                        <span class="stat-label">Landing Score</span>
-                        <span class="stat-value" id="stat-pad-score">0 / 2,000</span>
-                    </div>
-                </div>
-
-                <!-- Total -->
-                <div class="stat-total-bar">
-                    <div class="stat-row total-row">
-                        <span class="stat-label">TOTAL SCORE</span>
-                        <span class="stat-value" id="stat-total">0</span>
-                    </div>
-                    <div class="star-rating" id="star-rating">☆☆☆☆☆</div>
+                    <div class="stat-score-chip" id="stat-target-score">0 / 2,000</div>
                 </div>
             </div>
 
-            <!-- Callsign entry -->
+            <!-- Hidden elements preserved for JS safety -->
+            <span id="stat-courage-bonus" style="display:none;"></span>
+            
+            <!-- Team Recruitment & Instagram Strip in Debrief -->
+            <div class="debrief-recruitment-bar">
+                <a href="http://forms.gle/Hx8GVf3w5mtR4YTZ6" target="_blank" rel="noopener noreferrer" class="debrief-apply-btn" title="İTÜ Lagari Thrust Başvuru Formu">
+                    <span>🚀 Takıma Katıl</span>
+                </a>
+                <a href="https://www.instagram.com/itulagarithrust/" target="_blank" rel="noopener noreferrer" class="debrief-social-btn" title="İTÜ Lagari Thrust Instagram" aria-label="Instagram">
+                    <svg viewBox="0 0 24 24" class="svg-social-mini" fill="currentColor">
+                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                    </svg>
+                </a>
+            </div>
+
+            <!-- Callsign entry (Centered & Stacked) -->
             <div class="callsign-section" id="callsign-section">
                 <input type="text" id="callsign-input"
                        class="callsign-input"
@@ -250,13 +241,16 @@
                        maxlength="20"
                        autocomplete="off"
                        spellcheck="false">
-                <button id="btn-submit-score" class="btn-primary">SUBMIT TO LEADERBOARD</button>
+                <button id="btn-submit-score" class="btn-primary">SUBMIT SCORE</button>
             </div>
 
+            <!-- Navigation Buttons (Centered) -->
             <div class="debrief-actions">
                 <button id="btn-retry" class="btn-secondary">RETRY MISSION</button>
                 <button id="btn-menu" class="btn-secondary">MAIN MENU</button>
             </div>
+            
+            <button id="btn-leaderboard-debrief" class="btn-link">VIEW LEADERBOARD</button>
         </div>
     </div>
 
@@ -265,7 +259,7 @@
         <div class="leaderboard-content">
             <div class="modal-brand-bar">
                 <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="modal-logo-mini">
-                <span class="modal-brand-title">TELEMETRY ARCHIVE</span>
+                <span class="modal-brand-tag">Lagari Thrust</span>
             </div>
             <h2 class="leaderboard-title">LEADERBOARD</h2>
             <div id="leaderboard-list" class="leaderboard-list">

@@ -50,50 +50,47 @@ export class Camera {
     /* ------------------------------------------------------------------ */
     /*  Presets (called by game state machine)                              */
     /* ------------------------------------------------------------------ */
-    /** Set camera to high wide desert drone perspective for cinematic intro. */
+    /** Set camera to the launch pad before the optical close-up begins. */
     startCinematic() {
-        this.x = -80;
-        this.y = 115;
-        this.zoom = 0.95;
-        this.targetX = -80;
-        this.targetY = 115;
-        this.targetZoom = 0.95;
-        this.lerpSpeed = 1.6;
+        this.x = 0;
+        this.y = 36;
+        this.zoom = 2.7;
+        this.targetX = 0;
+        this.targetY = 36;
+        this.targetZoom = 2.7;
+        this.lerpSpeed = 2.4;
         this.shakeAmplitude = 0;
         this.shakeDuration = 0;
     }
 
     /**
-     * Compute smooth cinematic camera position along multi-phase trajectory.
-     * @param {number} progress – normalized progress from 0.0 to 1.0 (over ~5.2 seconds)
+     * Search right and left through the binoculars, then center on the rocket.
+     * @param {number} progress – normalized progress from 0.0 to 1.0 (over 5.4 seconds)
      */
     updateCinematic(progress) {
         const p = Math.max(0, Math.min(1, progress));
 
         const smoothstep = (t) => t * t * (3 - 2 * t);
-        const easeInOutCubic = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-
-        if (p < 0.40) {
-            // Phase 1 (0.0 to 0.40): Slow atmospheric aerial glide across high desert landscape
-            const t = p / 0.40;
-            const ease = smoothstep(t);
-            this.x = -80 + ease * 35;       // -80 to -45
-            this.y = 115 - ease * 25;       // 115 to 90
-            this.zoom = 0.95 + ease * 0.35; // 0.95 to 1.30
-        } else if (p < 0.78) {
-            // Phase 2 (0.40 to 0.78): Descending drone sweep toward the launch tower & rocket
-            const t = (p - 0.40) / 0.38;
-            const ease = easeInOutCubic(t);
-            this.x = -45 + ease * 48;       // -45 to +3
-            this.y = 90 - ease * 46;        // 90 to 44
-            this.zoom = 1.30 + ease * 0.95; // 1.30 to 2.25
+        if (p < 0.25) {
+            const ease = smoothstep(p / 0.25);
+            this.x = ease * 22;
+            this.y = 36;
+            this.zoom = 3.8 + ease * 0.7;
+        } else if (p < 0.55) {
+            const ease = smoothstep((p - 0.25) / 0.30);
+            this.x = 22 - ease * 44;
+            this.y = 36;
+            this.zoom = 4.5;
+        } else if (p < 0.72) {
+            const ease = smoothstep((p - 0.55) / 0.17);
+            this.x = -22 + ease * 22;
+            this.y = 36;
+            this.zoom = 4.5;
         } else {
-            // Phase 3 (0.78 to 1.0): Gentle ease-in and lock onto launch pad preset (x: 0, y: 36, zoom: 2.7)
-            const t = (p - 0.78) / 0.22;
-            const ease = smoothstep(t);
-            this.x = 3 - ease * 3;          // 3 to 0
-            this.y = 44 - ease * 8;         // 44 to 36
-            this.zoom = 2.25 + ease * 0.45; // 2.25 to 2.70
+            const ease = smoothstep((p - 0.72) / 0.28);
+            this.x = 0;
+            this.y = 36;
+            this.zoom = 4.5 - ease * 1.8;
         }
 
         // Keep targets aligned so transitioning out is seamless

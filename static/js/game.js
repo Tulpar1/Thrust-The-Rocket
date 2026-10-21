@@ -1,25 +1,20 @@
 /**
  * game.js — Main Game Engine & State Machine Orchestrator
  * ========================================================
- * Implements the 13-stage flight sequence of "Thrust The Rocket".
- * Integrates physics, camera, rendering, particles, procedural audio,
- * unified input, and DOM HUD/debrief overlays.
- *
- * Strictly adheres to the Production Plan Blueprint (v2.0).
+ * Implements the responsive flight sequence of "Thrust The Rocket".
+ * Integrates realistic kinematics, canopy steering, sweet-spot courage
+ * mechanics, manual recovery fallback, and scoring precision.
  */
 
-import { PHYSICS, createRocket, PhysicsEngine, calculateScore } from './physics.js?v=3.9';
-import { Camera } from './camera.js?v=3.9';
-import { Renderer } from './renderer.js?v=3.9';
-import { ParticleSystem } from './particles.js?v=3.9';
-import { AudioManager } from './audio.js?v=3.9';
-import { InputManager } from './input.js?v=3.9';
-import { UIManager } from './ui.js?v=3.9';
-import { Rocket3D } from './rocket3d.js?v=3.9';
+import { PHYSICS, createRocket, PhysicsEngine, calculateScore } from './physics.js?v=4.0';
+import { Camera } from './camera.js?v=4.0';
+import { Renderer } from './renderer.js?v=4.0';
+import { ParticleSystem } from './particles.js?v=4.0';
+import { AudioManager } from './audio.js?v=4.0';
+import { InputManager } from './input.js?v=4.0';
+import { UIManager } from './ui.js?v=4.0';
+import { Rocket3D } from './rocket3d.js?v=4.0';
 
-/* ====================================================================== */
-/*  Game State Enum                                                       */
-/* ====================================================================== */
 export const STATE = {
     TITLE:            'TITLE',
     CINEMATIC:        'CINEMATIC',
@@ -39,21 +34,14 @@ export const STATE = {
     DEBRIEF:          'DEBRIEF',
 };
 
-/* ====================================================================== */
-/*  ⏱️ 3-2-1 LIFTOFF GERİ SAYIM VE SENKRONİZASYON AYARLARI (Saniye)        */
-/* ====================================================================== */
-// Ses dosyanızdaki (countdown.mp3) kelimelerin başladığı saniyeler:
 export const COUNTDOWN_TIMINGS = {
-    THREE:   0.25,  // Ekranda "3" çıktığı ve sesin başladığı an
-    TWO:     1.50,  // Ekranda "2" çıktığı ve sesin başladığı an
-    ONE:     2.65,  // Ekranda "1" çıktığı ve sesin başladığı an
-    LIFTOFF: 3.70,  // Ekranda "LIFTOFF!" çıktığı, motorun ateşlendiği an
-    ASCENT:  4.55,  // Ses bittiğinde roketin rampadan göğe fırladığı an
+    THREE:   0.25,
+    TWO:     1.50,
+    ONE:     2.65,
+    LIFTOFF: 3.70,
+    ASCENT:  4.55,
 };
 
-/* ====================================================================== */
-/*  Game Engine Class                                                     */
-/* ====================================================================== */
 class GameEngine {
     constructor() {
         /** @type {HTMLCanvasElement} */
@@ -71,6 +59,7 @@ class GameEngine {
         this.bootLoader = document.getElementById('boot-loader');
         const isMobileScreen = window.matchMedia('(max-width: 768px)').matches;
         this.rocket3d = null;
+
         const loadRocketPreview = () => {
             this.rocket3d = new Rocket3D();
             this.rocket3d.mountPreview(document.getElementById('rocket-preview'));
@@ -80,7 +69,6 @@ class GameEngine {
         this.titleRevealFallback = setTimeout(() => this._revealTitle(), isMobileScreen ? 4000 : 3000);
         this.bootRevealFallback = setTimeout(() => this._hideBootLoader(), 6000);
 
-        // UI Manager with callback wiring
         this.ui = new UIManager({
             onStart:         () => this.onStartMission(),
             onRetry:         () => this.onRetryMission(),
@@ -90,38 +78,28 @@ class GameEngine {
             onSkipCinematic: () => this.onSkipCinematic(),
         });
 
-        // Game Simulation State
         this.state          = STATE.TITLE;
         this.rocket         = createRocket();
         this.engineOn       = false;
-        this.chuteState     = 'none';   // 'none' | 'drogue' | 'main'
+        this.chuteState     = 'none';
         this.apogee         = 0;
         this.chutePenalty   = 0;
         this.finalVy        = 0;
         this.finalX         = 0;
+        this.failureType    = 'NONE';
         this.lastScoreData  = null;
 
-        // Timers & counters
         this.stateTimer     = 0;
         this.countdownStep  = 3;
         this.lastTime       = performance.now();
 
-        // Window resize handler with DPR scaling
         this._initResize();
-
-        // User gesture listener to activate Web Audio context
         this._initAudioUnlock();
-
-        // Attempt background music immediately (will begin seamlessly on first user interaction if restricted by browser)
         this.audio.playBGM();
 
-        // Start game loop
         requestAnimationFrame((t) => this._loop(t));
     }
 
-    /* ------------------------------------------------------------------ */
-    /*  Setup & Event Listeners                                           */
-    /* ------------------------------------------------------------------ */
     _initResize() {
         const resize = () => {
             const dpr = window.devicePixelRatio || 1;
@@ -133,9 +111,7 @@ class GameEngine {
             this.canvas.style.width  = w + 'px';
             this.canvas.style.height = h + 'px';
 
-            // Scale drawing context so logical units match CSS pixels
             this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
             this.camera.resize(w, h);
             this.renderer.resize(w, h);
         };
@@ -159,9 +135,6 @@ class GameEngine {
         window.addEventListener('keydown', unlock, { passive: true });
     }
 
-    /* ------------------------------------------------------------------ */
-    /*  UI Callbacks                                                      */
-    /* ------------------------------------------------------------------ */
     onStartMission() {
         this.audio.init();
         this.audio.resume();
@@ -208,9 +181,6 @@ class GameEngine {
         await this.ui.submitScore(name, data);
     }
 
-    /* ------------------------------------------------------------------ */
-    /*  State Machine Transitions                                         */
-    /* ------------------------------------------------------------------ */
     transitionTo(nextState) {
         this.state = nextState;
 
@@ -220,6 +190,7 @@ class GameEngine {
                 this.rocket       = createRocket();
                 this.engineOn     = false;
                 this.chuteState   = 'none';
+                this.failureType  = 'NONE';
                 this.particles.clear();
                 this.camera.setPadPreset();
                 this.ui.showTitle();
@@ -235,6 +206,7 @@ class GameEngine {
                 this.rocket          = createRocket();
                 this.engineOn        = false;
                 this.chuteState      = 'none';
+                this.failureType     = 'NONE';
                 this.particles.clear();
                 this.physics.wind.reset();
                 this._cinematicStage = 'PROLOGUE';
@@ -250,7 +222,6 @@ class GameEngine {
                 this.ui.hideCountdown();
                 this.ui.showCinematic();
 
-                // Start typewriter terminal sequence on pure black screen
                 this.ui.startPrologueTypewriter(
                     () => this.audio.playTypewriterBeep(),
                     () => this._onPrologueFinished()
@@ -262,6 +233,7 @@ class GameEngine {
                 this.rocket       = createRocket();
                 this.engineOn     = false;
                 this.chuteState   = 'none';
+                this.failureType  = 'NONE';
                 this.apogee       = 0;
                 this.chutePenalty = 0;
                 this.finalVy      = 0;
@@ -296,7 +268,7 @@ class GameEngine {
                 this.ui.hideFuelBar();
                 this.ui.hideActionPrompt();
                 this.ignitionElapsed = 0;
-                this.countdownStep   = 4; // Henüz 3 gösterilmedi
+                this.countdownStep   = 4;
                 this.camera.setIgnitionPreset();
                 if (this.audio.hasSingleCountdown) {
                     this.audio.playSingleCountdown();
@@ -306,6 +278,9 @@ class GameEngine {
             case STATE.ASCENT:
                 this.ui.hideCountdown();
                 this.engineOn = true;
+                if (this.failureType === 'FIN_FLUTTER') {
+                    this.ui.showActionPrompt('FIN FLUTTER DETECTED · ATTITUDE UNSTABLE', true);
+                }
                 this.camera.addShake(8, 1.2, 28);
                 this.audio.startEngineRoar();
                 this.audio.setEngineIntensity(1.0);
@@ -321,10 +296,14 @@ class GameEngine {
                 this.input.flush();
                 this.engineOn    = false;
                 this.apogee      = Math.max(this.apogee, this.rocket.y);
-                this.stateTimer  = 3.0; // 3-second timing window
+                this.stateTimer  = 3.2;
                 this.camera.setApogeePreset(this.rocket.x, this.apogee);
-                this.audio.playWarningBeep();
-                this.ui.showActionPrompt('TAP TO DEPLOY DROGUE CHUTE! (EARLIER = STABLE DESCENT)', true);
+                if (this.rocket.avionicsFailed) {
+                    this.ui.hideActionPrompt();
+                } else {
+                    this.audio.playWarningBeep();
+                    this.ui.showActionPrompt('TAP TO DEPLOY DROGUE CHUTE!', true);
+                }
                 break;
 
             case STATE.DROGUE_DEPLOYED:
@@ -335,23 +314,27 @@ class GameEngine {
                 this.rocket.drogueOscillation = 0;
                 this.audio.playChutePopDrogue();
                 this.camera.addShake(8, 0.3);
-                this.ui.hideActionPrompt();
                 this.physics.wind.active = true;
+                this.ui.hideActionPrompt();
                 break;
 
             case STATE.FREEFALL:
                 this.chuteState    = 'none';
-                this.chutePenalty += 1500; // Degraded performance penalty
+                this.chutePenalty += 1500;
                 this.physics.wind.active = true;
-                this.ui.showActionPrompt('MISSED DROGUE! FREEFALL TUMBLE', true);
+                this.ui.showActionPrompt('MISSED DROGUE! RAPID TUMBLE DIVE', true);
                 break;
 
             case STATE.MAIN_READY:
                 this.input.flush();
-                this.stateTimer = 0.12; // Grace window so previous touches don't auto-deploy
+                this.stateTimer = 0.10;
                 this.camera.setDescentPreset(this.rocket.x, this.rocket.y);
-                this.audio.playWarningBeep();
-                this.ui.showActionPrompt('TAP TO DEPLOY MAIN CHUTE! (EARLIER = SOFTER LANDING)', true);
+                if (this.rocket.avionicsFailed) {
+                    this.ui.hideActionPrompt();
+                } else {
+                    this.audio.playWarningBeep();
+                    this.ui.showActionPrompt('TAP TO DEPLOY MAIN CHUTE!', true);
+                }
                 break;
 
             case STATE.MAIN_DEPLOYED:
@@ -361,18 +344,20 @@ class GameEngine {
                 this.rocket.chuteInflation = 0;
                 this.rocket.chuteOscillation = 0;
                 this.audio.playChutePopMain();
-                this.camera.addShake(8, 0.3);
+                this.camera.addShake(10, 0.35);
                 this.ui.hideActionPrompt();
                 break;
 
             case STATE.NO_CHUTE_DESCENT:
                 this.chutePenalty += 2000;
-                this.ui.showActionPrompt('TOO LATE! MAIN CHUTE FAILED', true);
+                this.ui.showActionPrompt('TOO LATE! MAIN CHUTE FAILED TO OPEN', true);
                 break;
 
             case STATE.TOUCHDOWN:
                 this.finalVy = this.rocket.impactVy || Math.abs(this.rocket.vy);
                 this.finalX  = this.rocket.x;
+                const touchdownTargetX = this.rocket.targetPadX || this.rocket.randomPadX || 0;
+                const touchdownOffset = Math.abs(this.finalX - touchdownTargetX);
                 this.audio.stopAll();
                 this.audio.playTouchdown();
                 this.physics.wind.active = false;
@@ -380,12 +365,10 @@ class GameEngine {
                 this.particles.emitDustCloud(this.rocket.x, 0, 1.2);
 
                 if (this.finalVy <= PHYSICS.SAFE_LANDING_VY) {
-                    // <= 15 ft/s: Başarılı İniş!
                     this.audio.playSuccessChime();
                     this.particles.emitConfetti(this.rocket.x, 0);
-                    this.ui.showActionPrompt(`Başarılı İniş! Hız: ${this.finalVy.toFixed(1)} ft/s`, false);
+                    this.ui.showActionPrompt(`Kusursuz İniş! Hız: ${this.finalVy.toFixed(1)} ft/s · Hedef Sapması: ${touchdownOffset.toFixed(0)} ft`, false);
                 } else {
-                    // 15 - 40 ft/s: Sert İniş (Hasarlı)!
                     this.particles.emitDebris(this.rocket.x, 0, 4);
                     this.particles.emitSparks(this.rocket.x, 0);
                     this.ui.showActionPrompt(`Sert İniş (Hasarlı)! Hız: ${this.finalVy.toFixed(1)} ft/s`, true);
@@ -415,17 +398,19 @@ class GameEngine {
         }
     }
 
-    /* ------------------------------------------------------------------ */
-    /*  Debrief Calculation                                               */
-    /* ------------------------------------------------------------------ */
     showDebriefReport() {
         const isCrashed = (this.state === STATE.CRASH || (this.rocket.y <= 0 && this.finalVy > PHYSICS.HARD_LANDING_VY));
+        const targetX = this.rocket.targetPadX || this.rocket.randomPadX || 0;
         const score = calculateScore(
             this.apogee,
             this.finalVy,
-            Math.abs(this.finalX),
+            0,
             this.chutePenalty,
-            isCrashed
+            isCrashed,
+            this.finalX,
+            this.rocket.chuteDeployAlt,
+            this.rocket.avionicsFailed,
+            targetX
         );
 
         this.lastScoreData = {
@@ -435,60 +420,48 @@ class GameEngine {
             altitudeScore:    score.altitudeScore,
             touchdownSpeed:   this.finalVy,
             touchdownScore:   score.touchdownScore,
-            padOffset:        Math.abs(this.finalX),
-            padScore:         score.padScore,
+            targetOffsetScore: score.targetOffsetScore,
+            courageBonus:     score.courageBonus,
+            manualHeroBonus:  score.manualHeroBonus,
+            distanceFromTarget: Math.abs(this.finalX - targetX),
+            targetOffset:      Math.abs(this.finalX - targetX),
+            chuteDeployAlt:   this.rocket.chuteDeployAlt || 0,
+            damageAmount:     score.damageAmount,
+            damagePenalty:    score.damagePenalty,
+            failureType:      this.failureType,
             chutePenalty:     score.chutePenalty,
             altitudeAccuracy: score.altitudeAccuracy,
             total:            score.total,
             stars:            score.stars,
             status:           score.status,
+            targetX:           targetX,
         };
 
         this.ui.showDebrief(this.lastScoreData);
     }
 
-    /* ------------------------------------------------------------------ */
-    /*  Main Update Loop                                                  */
-    /* ------------------------------------------------------------------ */
     _update(dt) {
         this.input.update(dt);
+        // Kullanıcı yönlendirmesini doğrudan rokete aktar
+        this.rocket.steerInput = this.input.steerInput;
 
         switch (this.state) {
             case STATE.TITLE:
-                // Ambient title screen
                 break;
 
             case STATE.CINEMATIC: {
-                if (this._cinematicStage === 'PROLOGUE') {
-                    // Holding camera at high drone vista while terminal text is typing
-                    break;
-                }
+                if (this._cinematicStage === 'PROLOGUE') break;
 
                 this.stateTimer -= dt;
                 const elapsed = 5.4 - this.stateTimer;
                 const progress = Math.max(0, Math.min(1, elapsed / 5.4));
 
-                // Advance smooth cinematic camera along drone trajectory
                 this.camera.updateCinematic(progress);
+                this.ui.updateCinematicView(progress);
 
-                // Live simulated UTC time string
-                const now = new Date();
-                const ms = Math.floor(now.getMilliseconds() / 100);
-                const utcStr = `UTC ${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')}:${String(now.getUTCSeconds()).padStart(2, '0')}.${ms}`;
-
-                if (elapsed >= 1.9 && this._cinematicPhase === 0) {
+                if (elapsed >= 5.0 && this._cinematicPhase === 0) {
                     this._cinematicPhase = 1;
-                    this.audio.playTelemetryBeep(1760);
-                    this._updateCinematicTelemetry(1, utcStr);
-                } else if (elapsed >= 3.7 && this._cinematicPhase === 1) {
-                    this._cinematicPhase = 2;
-                    this.audio.playTelemetryBeep(2200);
-                    this._updateCinematicTelemetry(2, utcStr);
-                } else if (elapsed >= 5.0 && this._cinematicPhase === 2) {
-                    this._cinematicPhase = 3;
-                    this.ui.hideCinematic(); // Start smooth letterbox retraction right before handover
-                } else {
-                    this.ui.updateCinematicTelemetry(null, null, null, null, utcStr);
+                    this.ui.hideCinematic();
                 }
 
                 if (this.stateTimer <= 0) {
@@ -506,16 +479,15 @@ class GameEngine {
 
             case STATE.FUELING:
                 if (this.input.isDown) {
-                    // İleri-Geri (Ping-Pong / Osilasyon) Hızlı Dolum Mekaniği:
                     this.fuelDirection = this.fuelDirection || 1;
                     this.rocket.fuel += this.fuelDirection * PHYSICS.FUEL_FILL_RATE * dt;
 
                     if (this.rocket.fuel >= PHYSICS.FUEL_MAX) {
                         this.rocket.fuel = PHYSICS.FUEL_MAX;
-                        this.fuelDirection = -1; // 100'e vurunca geri dön
+                        this.fuelDirection = -1;
                     } else if (this.rocket.fuel <= 0) {
                         this.rocket.fuel = 0;
-                        this.fuelDirection = 1; // 0'a vurunca tekrar ileri git
+                        this.fuelDirection = 1;
                     }
 
                     this.ui.updateFuelBar(this.rocket.fuel);
@@ -524,18 +496,20 @@ class GameEngine {
 
                 if (this.input.justReleased || !this.input.isDown) {
                     if (this.rocket.fuel < 5) {
-                        // Çok erken bırakıldıysa yakıtı sıfırla
                         this.audio.stopFuelPump();
                         this.rocket.fuel = 0;
                         this.ui.updateFuelBar(0);
                         this.transitionTo(STATE.PAD_READY);
                     } else {
-                        // Fırlatma onaylandı!
-                        // Her atışa gerçekçi roket motoru ve atmosfer sapması (±%5 rastgele)
-                        // Örn: 0.95 ile 1.05 arasında rastgele bir faktör
-                        const randomVariance = (Math.random() * 0.10) - 0.05; // -0.05 ile +0.05
+                        const randomVariance = (Math.random() * 0.10) - 0.05;
                         this.rocket.thrustFactor = 1.0 + randomVariance;
-                        console.log(`[Launch Confirmed] Fuel: ${this.rocket.fuel.toFixed(1)}%, Motor Thrust Factor: ${this.rocket.thrustFactor.toFixed(3)} (Variance: ${(randomVariance * 100).toFixed(2)}%)`);
+                        const failureRoll = Math.random();
+                        this.failureType = failureRoll < 1.0 ? 'AVIONICS' : failureRoll < 0.0 ? 'NONE' : 'NONE';
+                        this.rocket.failureType = this.failureType;
+                        this.rocket.avionicsFailed = this.failureType === 'AVIONICS';
+                        this.rocket.flutterActive = this.failureType === 'FIN_FLUTTER';
+                        this.rocket.telemetryLost = this.rocket.avionicsFailed;
+                        if (this.rocket.telemetryLost) this.ui.setTelemetryLost();
                         this.transitionTo(STATE.IGNITION);
                     }
                 }
@@ -545,49 +519,32 @@ class GameEngine {
                 this.ignitionElapsed = (this.ignitionElapsed || 0) + dt;
                 const t = this.ignitionElapsed;
 
-                // 1. "3" Adımı
                 if (t >= COUNTDOWN_TIMINGS.THREE && this.countdownStep > 3) {
                     this.countdownStep = 3;
                     this.ui.showCountdown(3);
-                    if (!this.audio.hasSingleCountdown) {
-                        this.audio.playVoiceCountdown(3);
-                    }
-                }
-                // 2. "2" Adımı
-                else if (t >= COUNTDOWN_TIMINGS.TWO && this.countdownStep > 2) {
+                    if (!this.audio.hasSingleCountdown) this.audio.playVoiceCountdown(3);
+                } else if (t >= COUNTDOWN_TIMINGS.TWO && this.countdownStep > 2) {
                     this.countdownStep = 2;
                     this.ui.showCountdown(2);
-                    if (!this.audio.hasSingleCountdown) {
-                        this.audio.playVoiceCountdown(2);
-                    }
-                }
-                // 3. "1" Adımı
-                else if (t >= COUNTDOWN_TIMINGS.ONE && this.countdownStep > 1) {
+                    if (!this.audio.hasSingleCountdown) this.audio.playVoiceCountdown(2);
+                } else if (t >= COUNTDOWN_TIMINGS.ONE && this.countdownStep > 1) {
                     this.countdownStep = 1;
                     this.ui.showCountdown(1);
-                    if (!this.audio.hasSingleCountdown) {
-                        this.audio.playVoiceCountdown(1);
-                    }
-                }
-                // 4. "LIFTOFF!" Adımı (Motor ateşleme, toz ve sarsıntı)
-                else if (t >= COUNTDOWN_TIMINGS.LIFTOFF && this.countdownStep > 0) {
+                    if (!this.audio.hasSingleCountdown) this.audio.playVoiceCountdown(1);
+                } else if (t >= COUNTDOWN_TIMINGS.LIFTOFF && this.countdownStep > 0) {
                     this.countdownStep = 0;
                     this.ui.showCountdown('LIFTOFF!');
-                    if (!this.audio.hasSingleCountdown) {
-                        this.audio.playVoiceCountdown('liftoff');
-                    }
+                    if (!this.audio.hasSingleCountdown) this.audio.playVoiceCountdown('liftoff');
                     this.audio.playIgnition();
                     this.particles.emitDustCloud(this.rocket.x, 0, 0.6);
                     this.camera.addShake(4, 0.8, 30);
                 }
 
-                // Liftoff anından rampadan ayrılış anına kadar motor alevi ve duman
                 if (t >= COUNTDOWN_TIMINGS.LIFTOFF) {
                     this.particles.emitExhaust(this.rocket.x, this.rocket.y, this.rocket.angle, 0.6);
                     this.particles.emitSmoke(this.rocket.x, this.rocket.y);
                 }
 
-                // 5. Rampadan Havalanış (Ascent)
                 if (t >= COUNTDOWN_TIMINGS.ASCENT) {
                     this.transitionTo(STATE.ASCENT);
                 }
@@ -596,7 +553,6 @@ class GameEngine {
             case STATE.ASCENT:
                 this.camera.setFollowPreset(this.rocket.x, this.rocket.y, this.rocket.vy);
 
-                // Continuous burn VFX
                 this.particles.emitExhaust(this.rocket.x, this.rocket.y, this.rocket.angle, 1.0);
                 this.particles.emitSmoke(this.rocket.x, this.rocket.y);
                 this.particles.emitSmokeTrail(this.rocket.x, this.rocket.y);
@@ -620,7 +576,6 @@ class GameEngine {
 
             case STATE.COASTING:
                 this.camera.setFollowPreset(this.rocket.x, this.rocket.y, this.rocket.vy);
-                this.audio.setWindIntensity(Math.min(1, Math.abs(this.rocket.vy) / 350));
 
                 this.particles.emitSmokeTrail(this.rocket.x, this.rocket.y);
                 if (Math.abs(this.rocket.vy) > 80) {
@@ -635,7 +590,6 @@ class GameEngine {
                     apogee:   this.rocket.y,
                 });
 
-                // Apogee reached when vertical velocity turns zero or negative
                 if (this.rocket.vy <= 0) {
                     this.apogee = this.rocket.y;
                     this.transitionTo(STATE.APOGEE_WAIT);
@@ -653,6 +607,7 @@ class GameEngine {
                     apogee:   this.apogee,
                 });
 
+                // Aviyonik çökse bile oyuncu manuel basabilir!
                 if (this.input.consumeTap()) {
                     this.transitionTo(STATE.DROGUE_DEPLOYED);
                 } else if (this.stateTimer <= 0) {
@@ -662,13 +617,9 @@ class GameEngine {
 
             case STATE.DROGUE_DEPLOYED:
                 this.camera.setDescentPreset(this.rocket.x, this.rocket.y);
-                this.audio.setWindIntensity(Math.min(1, Math.abs(this.rocket.vy) / 250));
 
                 if (Math.abs(this.rocket.vy) > 80) {
                     this.particles.emitWindStreaks(this.rocket.x, this.rocket.y, Math.abs(this.rocket.vy), this.rocket.vy);
-                }
-                if (Math.abs(this.rocket.vy) > 150) {
-                    this.particles.emitReentryGlow(this.rocket.x, this.rocket.y, Math.abs(this.rocket.vy));
                 }
 
                 this.ui.updateHUD({
@@ -679,19 +630,15 @@ class GameEngine {
                     apogee:   this.apogee,
                 });
 
-                if (this.rocket.y <= PHYSICS.MAIN_CHUTE_ALT) {
+                if (this.rocket.y <= PHYSICS.MAIN_CHUTE_ARM_ALT) {
                     this.transitionTo(STATE.MAIN_READY);
                 }
                 break;
 
             case STATE.FREEFALL:
                 this.camera.setDescentPreset(this.rocket.x, this.rocket.y);
-                this.audio.setWindIntensity(Math.min(1, Math.abs(this.rocket.vy) / 200));
 
                 this.particles.emitWindStreaks(this.rocket.x, this.rocket.y, Math.abs(this.rocket.vy), this.rocket.vy);
-                if (Math.abs(this.rocket.vy) > 150) {
-                    this.particles.emitReentryGlow(this.rocket.x, this.rocket.y, Math.abs(this.rocket.vy));
-                }
 
                 this.ui.updateHUD({
                     altitude: this.rocket.y,
@@ -701,23 +648,24 @@ class GameEngine {
                     apogee:   this.apogee,
                 });
 
-                if (this.rocket.y <= PHYSICS.MAIN_CHUTE_ALT) {
+                if (this.rocket.y <= PHYSICS.MAIN_CHUTE_ARM_ALT) {
                     this.transitionTo(STATE.MAIN_READY);
                 }
                 break;
 
             case STATE.MAIN_READY:
                 this.camera.setDescentPreset(this.rocket.x, this.rocket.y);
-                this.audio.setWindIntensity(Math.min(1, Math.abs(this.rocket.vy) / 250));
 
                 if (Math.abs(this.rocket.vy) > 80) {
                     this.particles.emitWindStreaks(this.rocket.x, this.rocket.y, Math.abs(this.rocket.vy), this.rocket.vy);
                 }
 
+                // Dinamik HUD uyarısı: Tatlı noktada olduğunu oyuncuya renkli hissettir
+                const inSweetSpot = this.rocket.y >= PHYSICS.SWEET_SPOT_MIN && this.rocket.y <= PHYSICS.SWEET_SPOT_MAX;
                 this.ui.updateHUD({
                     altitude: this.rocket.y,
                     speed:    this.rocket.vy,
-                    stage:    `ARMED (${Math.round(this.rocket.y)} FT)`,
+                    stage:    inSweetSpot ? '★ SWEET SPOT ACTIVE ★' : `ARMED (${Math.round(this.rocket.y)} FT)`,
                     wind:     this.physics.wind.currentForce,
                     apogee:   this.apogee,
                 });
@@ -728,8 +676,7 @@ class GameEngine {
                 } else {
                     if (this.input.consumeTap()) {
                         this.transitionTo(STATE.MAIN_DEPLOYED);
-                    } else if (this.rocket.y <= 100) {
-                        // Altitude too low to deploy main canopy
+                    } else if (this.rocket.y <= 120) {
                         this.transitionTo(STATE.NO_CHUTE_DESCENT);
                     }
                 }
@@ -737,12 +684,11 @@ class GameEngine {
 
             case STATE.MAIN_DEPLOYED:
                 this.camera.setDescentPreset(this.rocket.x, this.rocket.y);
-                this.audio.setWindIntensity(Math.min(0.4, Math.abs(this.rocket.vy) / 250));
 
                 this.ui.updateHUD({
                     altitude: this.rocket.y,
                     speed:    this.rocket.vy,
-                    stage:    'STAGE 3: FINAL APPROACH',
+                    stage:    `STAGE 3: FINAL (TARGET: ${Math.abs(this.rocket.x - (this.rocket.targetPadX || this.rocket.randomPadX || 0)).toFixed(0)} FT)`,
                     wind:     this.physics.wind.currentForce,
                     apogee:   this.apogee,
                 });
@@ -751,9 +697,6 @@ class GameEngine {
                     const impactSpeed = this.rocket.impactVy || Math.abs(this.rocket.vy);
                     const safeAngle = Math.abs(this.rocket.angle * 180 / Math.PI) <= PHYSICS.SAFE_LANDING_ANGLE;
 
-                    // Yere Temas Kontrolü:
-                    // <= 40 ft/s ve dengeli açı: TOUCHDOWN (<= 15 Başarılı, 15-40 Sert İniş Hasarlı)
-                    // > 40 ft/s veya takla açısı: CRASH (Kırım / Çakılma)
                     if (impactSpeed <= PHYSICS.HARD_LANDING_VY && safeAngle) {
                         this.transitionTo(STATE.TOUCHDOWN);
                     } else {
@@ -788,11 +731,9 @@ class GameEngine {
                 break;
 
             case STATE.DEBRIEF:
-                // Waiting for user action
                 break;
         }
 
-        // Run physics integration (if in flight)
         if (this.state !== STATE.TITLE &&
             this.state !== STATE.CINEMATIC &&
             this.state !== STATE.PAD_READY &&
@@ -804,9 +745,14 @@ class GameEngine {
 
             this.physics.update(this.rocket, dt, this.engineOn, this.chuteState);
             this.apogee = Math.max(this.apogee, this.rocket.y);
+            if (this.state !== STATE.ASCENT && this.state !== STATE.IGNITION) {
+                const airspeed = Math.hypot(this.rocket.vx, this.rocket.vy);
+                const chuteFactor = this.chuteState === 'main' ? 1.12 : 1;
+                const windIntensity = Math.min(1, Math.pow((airspeed * chuteFactor) / 350, 0.72));
+                this.audio.setWindIntensity(windIntensity);
+            }
         }
 
-        // Render the menu preview separately from the in-game rocket pose.
         if (this.rocket3d && this.state === STATE.TITLE) {
             this.rocket3d.updateMenuPreview(dt);
             if (this.rocket3d.isReady || this.rocket3d.loadFailed) {
@@ -821,99 +767,141 @@ class GameEngine {
             this._hideBootLoader();
         }
 
-        // Update camera (skip during cinematic as updateCinematic handles exact trajectory)
         if (this.state !== STATE.CINEMATIC) {
             this.camera.update(dt);
         }
         this.particles.update(dt);
-
         this.input.lateUpdate();
     }
 
     _onPrologueFinished() {
         if (this.state !== STATE.CINEMATIC) return;
-        this._cinematicStage = 'DRONE';
+        this._cinematicStage = 'OPTICAL_SCOPE';
         this.stateTimer = 5.4;
         this._cinematicPhase = 0;
-
-        // Smoothly fade out the black screen revealing the desert and drone shot
         this.ui.fadeOutPrologue();
-
-        // Radio squelch comms burst & Quindar tone
-        this.audio.playRadioCommsIntro();
-        this._updateCinematicTelemetry(0);
     }
 
-    _updateCinematicTelemetry(phase, timeStr) {
-        if (phase === 0) {
-            this.ui.updateCinematicTelemetry(
-                'FACILITY OVERVIEW',
-                'IREC LAUNCH COMPLEX',
-                'CHIHUAHUAN DESERT · TEXAS FLIGHT RANGE',
-                'LAT 31.0299°N · LON 103.5403°W · ELEV 2,850 FT',
-                timeStr
-            );
-        } else if (phase === 1) {
-            this.ui.updateCinematicTelemetry(
-                'VEHICLE DIAGNOSTICS',
-                'TURKISH AEROSPACE · VEGA-1',
-                'STAGE 1 SOLID PROPELLANT MOTOR',
-                'AVIONICS: NOMINAL · GUIDANCE: LOCKED · TARGET: 10,000 FT',
-                timeStr
-            );
-        } else if (phase === 2) {
-            this.ui.updateCinematicTelemetry(
-                'RANGE CLEARANCE',
-                'FLIGHT DECK CLEAR',
-                'UMBILICAL TOWER POWER NOMINAL',
-                'HANDING OVER CONTROL TO LAUNCH OFFICER...',
-                timeStr
-            );
-        }
-    }
-
-    /* ------------------------------------------------------------------ */
-    /*  Main Render Loop                                                  */
-    /* ------------------------------------------------------------------ */
     _render() {
         this.renderer.clear();
-
-        // 1. Sky & atmosphere
         this.renderer.drawSky(this.camera);
 
-        // 2. Desert ground floor & landing pad (with realistic vegetation and horizon)
         this.renderer.drawGround(this.camera, this.state === STATE.TITLE);
         if (this.state !== STATE.TITLE) {
             this.renderer.drawFieldOperations(this.camera, this.state, this.rocket);
             this.renderer.drawLandingPad(this.camera);
         }
 
-        // 4. Altitude lines & target markers
         this.renderer.drawAltitudeMarkers(this.camera, this.rocket.y);
 
-        // 5. Rocket & parachutes (3D PBR Model with 2D fallback)
         if (this.state !== STATE.TITLE && this.state !== STATE.CRASH) {
             this.renderer.drawRocket(this.rocket, this.camera, this.engineOn, this.chuteState, this.rocket3d);
         }
 
-        // 6. World-space particles & VFX
         this.particles.render(this.ctx, this.camera);
 
-        // 7. Cinematic VFX (Anamorphic lens flare & atmospheric sun glint)
+        // 7. SpaceX Landing Target & Waypoint HUD
+        if (this.state !== STATE.TITLE && this.state !== STATE.CINEMATIC) {
+            this._drawLandingTargetHUD();
+        }
+
         if (this.state === STATE.CINEMATIC) {
             const progress = Math.max(0, Math.min(1, (5.4 - this.stateTimer) / 5.4));
             this.renderer.drawCinematicVFX(this.camera, progress);
         }
     }
 
-    /* ------------------------------------------------------------------ */
-    /*  Animation Loop Frame                                              */
-    /* ------------------------------------------------------------------ */
+    /**
+     * Yerdeki SpaceX İniş Platformunu (Landing Zone) ve 
+     * havadayken hedefi gösteren dinamik kılavuz oku (Waypoint) çizer.
+     */
+    _drawLandingTargetHUD() {
+        const ctx = this.ctx;
+        const targetX = this.rocket.targetPadX || this.rocket.randomPadX || 0;
+        const dx = targetX - this.rocket.x;
+        const absDx = Math.abs(dx);
+        const isAligned = absDx <= 25;
+
+        ctx.save();
+
+        if (this.camera.worldToScreen) {
+            const padScreen = this.camera.worldToScreen(targetX, 0);
+            const w = this.camera.screenW || window.innerWidth;
+            const h = this.camera.screenH || window.innerHeight;
+
+            if (padScreen.y >= 0 && padScreen.y <= h + 40) {
+                const padHalfWidth = 35 * (this.camera.zoom || 1);
+                
+                ctx.strokeStyle = isAligned ? '#00ff88' : '#ff9900';
+                ctx.fillStyle = isAligned ? 'rgba(0, 255, 136, 0.22)' : 'rgba(255, 153, 0, 0.18)';
+                ctx.lineWidth = 3;
+
+                ctx.beginPath();
+                if (ctx.roundRect) {
+                    ctx.roundRect(padScreen.x - padHalfWidth, padScreen.y - 6, padHalfWidth * 2, 12, 4);
+                } else {
+                    ctx.rect(padScreen.x - padHalfWidth, padScreen.y - 6, padHalfWidth * 2, 12);
+                }
+                ctx.fill();
+                ctx.stroke();
+
+                const beamGrad = ctx.createLinearGradient(0, padScreen.y - 180, 0, padScreen.y);
+                beamGrad.addColorStop(0, 'rgba(0, 255, 136, 0)');
+                beamGrad.addColorStop(1, isAligned ? 'rgba(0, 255, 136, 0.35)' : 'rgba(255, 153, 0, 0.25)');
+                ctx.fillStyle = beamGrad;
+                ctx.fillRect(padScreen.x - padHalfWidth * 0.7, padScreen.y - 180, padHalfWidth * 1.4, 180);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 11px monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('🎯 TARGET', padScreen.x, padScreen.y + 22);
+            }
+
+            if (this.rocket.y > 80) {
+                const margin = 75;
+                const clampedX = Math.max(margin, Math.min(w - margin, padScreen.x));
+                const indicatorY = h - 85;
+
+                const color = isAligned ? '#00ff88' : (absDx < 100 ? '#ffdd00' : '#ff6600');
+
+                ctx.fillStyle = 'rgba(10, 15, 25, 0.82)';
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                if (ctx.roundRect) {
+                    ctx.roundRect(clampedX - 68, indicatorY - 26, 136, 42, 8);
+                } else {
+                    ctx.rect(clampedX - 68, indicatorY - 26, 136, 42);
+                }
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = color;
+                ctx.font = 'bold 16px monospace';
+                ctx.textAlign = 'center';
+                const dirText = isAligned ? '✅' : (dx > 0 ? `→` : `←`);
+                ctx.fillText(dirText, clampedX, indicatorY - 8);
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '11px monospace';
+                ctx.fillText(`TARGET: ${Math.round(absDx)} FT`, clampedX, indicatorY + 8);
+
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.moveTo(clampedX - 10, indicatorY + 18);
+                ctx.lineTo(clampedX + 10, indicatorY + 18);
+                ctx.lineTo(clampedX, indicatorY + 30);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+
+        ctx.restore();
+    }
+
     _loop(now) {
         let dt = (now - this.lastTime) / 1000;
         this.lastTime = now;
-
-        // Cap dt to prevent physics explosions after tab-switching (Plan §15)
         dt = Math.min(dt, 1 / 30);
 
         this._update(dt);
@@ -923,9 +911,6 @@ class GameEngine {
     }
 }
 
-/* ====================================================================== */
-/*  Entry Point                                                           */
-/* ====================================================================== */
 window.addEventListener('DOMContentLoaded', () => {
     window.gameInstance = new GameEngine();
 });

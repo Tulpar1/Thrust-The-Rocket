@@ -34,6 +34,7 @@ export class UIManager {
             titleScreen:     document.getElementById('title-screen'),
             btnStart:        document.getElementById('btn-start'),
             btnLBTitle:      document.getElementById('btn-leaderboard-title'),
+            btnLBDebrief:    document.getElementById('btn-leaderboard-debrief'),
 
             debriefScreen:   document.getElementById('debrief-screen'),
             debriefTitle:    document.getElementById('debrief-title'),
@@ -43,8 +44,11 @@ export class UIManager {
             statAltScore:    document.getElementById('stat-alt-score'),
             statTouchdown:   document.getElementById('stat-touchdown'),
             statTdScore:     document.getElementById('stat-td-score'),
-            statOffset:      document.getElementById('stat-offset'),
-            statPadScore:    document.getElementById('stat-pad-score'),
+            statDamage:      document.getElementById('stat-damage'),
+            statDamagePenalty: document.getElementById('stat-damage-penalty'),
+            statTargetOffset: document.getElementById('stat-target-offset'),
+            statTargetScore:  document.getElementById('stat-target-score'),
+            statCourageBonus: document.getElementById('stat-courage-bonus'),
             statTotal:       document.getElementById('stat-total'),
             starRating:      document.getElementById('star-rating'),
             callsignSection: document.getElementById('callsign-section'),
@@ -63,15 +67,18 @@ export class UIManager {
             terminalLine1:     document.getElementById('terminal-line-1'),
             terminalLine2:     document.getElementById('terminal-line-2'),
             btnCinematicSkip:  document.getElementById('btn-cinematic-skip'),
-            cinematicStepTag:  document.getElementById('cinematic-step-tag'),
-            cinematicTitle:    document.getElementById('cinematic-title'),
-            cinematicSubtitle: document.getElementById('cinematic-subtitle'),
-            cinematicMeta:     document.getElementById('cinematic-meta'),
-            cinematicTime:     document.getElementById('cinematic-time'),
+            cinematicBinocular: document.querySelector('.cinematic-binocular'),
         };
 
         this._typewriterTimers = [];
+        this.telemetryLost = false;
         this._bindButtons();
+    }
+
+    setTelemetryLost() {
+        this.telemetryLost = true;
+        this.els.stageValue.textContent = 'AVIONICS FAILURE';
+        this.els.windValue.textContent = '—';
     }
 
     /* ------------------------------------------------------------------ */
@@ -99,9 +106,11 @@ export class UIManager {
             }
         });
 
-        e.btnLBTitle.addEventListener('click', () => {
+        const openLeaderboard = () => {
             if (this.callbacks.onLeaderboard) this.callbacks.onLeaderboard();
-        });
+        };
+        e.btnLBTitle.addEventListener('click', openLeaderboard);
+        e.btnLBDebrief.addEventListener('click', openLeaderboard);
 
         e.btnLBClose.addEventListener('click', () => {
             this.hideLeaderboard();
@@ -121,6 +130,9 @@ export class UIManager {
     showCinematic() {
         const e = this.els;
         if (!e.cinematicOverlay) return;
+        if (e.cinematicBinocular) {
+            e.cinematicBinocular.classList.remove('hidden', 'exiting');
+        }
         e.cinematicOverlay.classList.remove('hidden');
         requestAnimationFrame(() => {
             e.cinematicOverlay.classList.add('active');
@@ -209,18 +221,16 @@ export class UIManager {
         }
     }
 
-    updateCinematicTelemetry(stepTag, title, subtitle, meta, timeString) {
-        const e = this.els;
-        if (e.cinematicStepTag && stepTag) e.cinematicStepTag.textContent = stepTag;
-        if (e.cinematicTitle && title) e.cinematicTitle.textContent = title;
-        if (e.cinematicSubtitle && subtitle) e.cinematicSubtitle.textContent = subtitle;
-        if (e.cinematicMeta && meta) e.cinematicMeta.textContent = meta;
-        if (e.cinematicTime && timeString) e.cinematicTime.textContent = timeString;
+    updateCinematicView(progress) {
+        if (!this.els.cinematicBinocular) return;
+        this.els.cinematicBinocular.classList.toggle('exiting', progress >= 0.62);
+        this.els.cinematicBinocular.classList.toggle('hidden', progress >= 0.9);
     }
 
     hideCinematic() {
         this.cancelPrologue();
         const e = this.els;
+        if (e.cinematicBinocular) e.cinematicBinocular.classList.add('hidden');
         if (!e.cinematicOverlay) return;
         e.cinematicOverlay.classList.remove('active');
         setTimeout(() => {
@@ -237,7 +247,7 @@ export class UIManager {
     /* ================================================================== */
     /*  HUD                                                                */
     /* ================================================================== */
-    showHUD()  { this.els.hud.classList.remove('hidden'); }
+    showHUD()  { this.telemetryLost = false; this.els.hud.classList.remove('hidden'); }
     hideHUD()  { this.els.hud.classList.add('hidden'); }
 
     /**
@@ -245,6 +255,7 @@ export class UIManager {
      * @param {{ altitude: number, speed: number, stage: string, wind: number, apogee: number }} data
      */
     updateHUD(data) {
+        if (this.telemetryLost) return;
         this.els.altValue.textContent   = Math.round(data.altitude).toLocaleString();
         this.els.spdValue.textContent   = Math.abs(data.speed).toFixed(1);
         this.els.stageValue.textContent = data.stage;
@@ -319,30 +330,55 @@ export class UIManager {
     /*  Mission Debrief                                                    */
     /* ================================================================== */
     /**
-     * @param {Object} data – { crashed, apogee, deviation, altitudeScore, touchdownSpeed, touchdownScore, padOffset, padScore, total, stars }
+     * @param {Object} data – { crashed, apogee, deviation, altitudeScore, touchdownSpeed, touchdownScore, damageAmount, damagePenalty, total, stars }
      */
     showDebrief(data) {
         const e = this.els;
 
-        e.debriefTitle.classList.remove('crash', 'warning');
-        e.debriefIcon.classList.remove('crash', 'warning', 'success');
+        e.debriefTitle.classList.remove('crash', 'warning', 'success');
+        if (e.debriefIcon) {
+            e.debriefIcon.classList.remove('crash', 'warning', 'success');
+        }
 
-        if (data.status === 'CRASHED' || data.crashed) {
+        if (data.failureType === 'AVIONICS' && (data.crashed || data.status === 'CRASHED')) {
+            e.debriefTitle.textContent = 'AVIONICS FAILURE / KIRIM';
+            e.debriefTitle.classList.add('crash');
+            if (e.debriefIcon) {
+                e.debriefIcon.textContent = '📡';
+                e.debriefIcon.classList.add('crash');
+            }
+            e.callsignSection.classList.add('hidden');
+        } else if (data.failureType === 'FIN_FLUTTER' && (data.crashed || data.status === 'CRASHED')) {
+            e.debriefTitle.textContent = 'FIN FLUTTER / HASARLI';
+            e.debriefTitle.classList.add('warning');
+            if (e.debriefIcon) {
+                e.debriefIcon.textContent = '⚠️';
+                e.debriefIcon.classList.add('warning');
+            }
+            e.callsignSection.classList.remove('hidden');
+        } else if (data.status === 'CRASHED' || data.crashed) {
             e.debriefTitle.textContent = 'KIRIM / ÇAKILMA';
             e.debriefTitle.classList.add('crash');
-            e.debriefIcon.textContent  = '💥';
-            e.debriefIcon.classList.add('crash');
+            if (e.debriefIcon) {
+                e.debriefIcon.textContent  = '💥';
+                e.debriefIcon.classList.add('crash');
+            }
             e.callsignSection.classList.add('hidden');
         } else if (data.status === 'DAMAGED') {
             e.debriefTitle.textContent = 'SERT İNİŞ (HASARLI)';
             e.debriefTitle.classList.add('warning');
-            e.debriefIcon.textContent  = '⚠️';
-            e.debriefIcon.classList.add('warning');
+            if (e.debriefIcon) {
+                e.debriefIcon.textContent  = '⚠️';
+                e.debriefIcon.classList.add('warning');
+            }
             e.callsignSection.classList.remove('hidden');
         } else {
             e.debriefTitle.textContent = 'BAŞARILI İNİŞ';
-            e.debriefIcon.textContent  = '✓';
-            e.debriefIcon.classList.add('success');
+            e.debriefTitle.classList.add('success');
+            if (e.debriefIcon) {
+                e.debriefIcon.textContent  = '✓';
+                e.debriefIcon.classList.add('success');
+            }
             e.callsignSection.classList.remove('hidden');
         }
 
@@ -352,8 +388,11 @@ export class UIManager {
         e.statAltScore.textContent  = data.altitudeScore.toLocaleString() + ' / 5,000';
         e.statTouchdown.textContent = data.touchdownSpeed.toFixed(1) + ' ft/s';
         e.statTdScore.textContent   = data.touchdownScore.toLocaleString() + ' / 3,000';
-        e.statOffset.textContent    = data.padOffset.toFixed(1) + ' ft';
-        e.statPadScore.textContent  = data.padScore.toLocaleString() + ' / 2,000';
+        e.statDamage.textContent    = data.damageAmount.toFixed(0) + '%';
+        if (e.statDamagePenalty) e.statDamagePenalty.textContent = '0';
+        if (e.statTargetOffset) e.statTargetOffset.textContent = (data.targetOffset !== undefined ? data.targetOffset.toFixed(1) : '0.0') + ' ft';
+        if (e.statTargetScore) e.statTargetScore.textContent = (data.targetOffsetScore || 0).toLocaleString() + ' / 2,000';
+        if (e.statCourageBonus) e.statCourageBonus.textContent = (data.courageBonus > 0) ? `+${data.courageBonus.toLocaleString()}` : '0';
         e.statTotal.textContent     = data.total.toLocaleString();
 
         // Stars
@@ -364,7 +403,7 @@ export class UIManager {
         this.lastDebriefData = data;
         e.callsignInput.value = '';
         e.btnSubmit.disabled = false;
-        e.btnSubmit.textContent = 'SUBMIT TO LEADERBOARD';
+        e.btnSubmit.textContent = 'SUBMIT SCORE';
         e.btnSubmit.style.opacity = '1';
         e.debriefScreen.classList.remove('hidden');
     }
@@ -421,7 +460,7 @@ export class UIManager {
     /**
      * POST score to backend.
      * @param {string} playerName
-     * @param {Object} scoreData – { total, apogee, altitudeAccuracy, touchdownSpeed, padOffset, status }
+     * @param {Object} scoreData – { total, apogee, altitudeAccuracy, touchdownSpeed, damageAmount, failureType, status }
      */
     async submitScore(playerName, scoreData) {
         if (!scoreData) scoreData = this.lastDebriefData || {};
@@ -435,7 +474,8 @@ export class UIManager {
                     apogee:            scoreData.apogee || 0,
                     altitude_accuracy: scoreData.altitudeAccuracy ?? 100,
                     touchdown_speed:   scoreData.touchdownSpeed ?? 0,
-                    pad_offset:        scoreData.padOffset ?? 0,
+                    damage_amount:     scoreData.damageAmount ?? 0,
+                    failure_type:      scoreData.failureType || 'NONE',
                     status:            scoreData.status || 'LANDED',
                 }),
             });

@@ -18,6 +18,7 @@ app = Flask(
     static_folder=os.path.join(BASE_DIR, 'static')
 )
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 @app.after_request
 def add_header(response):
@@ -40,8 +41,8 @@ else:
 def get_db():
     """Return a per-request database connection."""
     if 'db' not in g:
-        init_db()
-        g.db = sqlite3.connect(DATABASE)
+        g.db = sqlite3.connect(DATABASE, timeout=10)
+        g.db.execute('PRAGMA busy_timeout = 10000')
         g.db.row_factory = sqlite3.Row
     return g.db
 
@@ -55,42 +56,31 @@ def close_db(exception):
 
 
 def init_db():
-    """Create tables, indices, and seed defaults if empty."""
+    """Create tables and indices without modifying player records."""
     os.makedirs(os.path.dirname(os.path.abspath(DATABASE)), exist_ok=True)
-    db = sqlite3.connect(DATABASE)
-    db.execute('''
-        CREATE TABLE IF NOT EXISTS scores (
-            id                INTEGER PRIMARY KEY AUTOINCREMENT,
-            player_name       TEXT    NOT NULL DEFAULT 'Anonymous',
-            score             INTEGER NOT NULL,
-            apogee            REAL    NOT NULL,
-            altitude_accuracy REAL    NOT NULL,
-            touchdown_speed   REAL    NOT NULL,
-            pad_offset        REAL    NOT NULL,
-            status            TEXT    NOT NULL CHECK(status IN ('LANDED','DAMAGED','CRASHED')),
-            created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    db.execute('CREATE INDEX IF NOT EXISTS idx_scores_score ON scores(score DESC)')
-    
-    # Seed top historical flight records if empty
-    count = db.execute('SELECT COUNT(*) FROM scores').fetchone()[0]
-    if count == 0:
-        seed_data = [
-            ('Apollo Commander', 9840, 10008.2, 99.92, 4.2, 0.8, 'LANDED'),
-            ('Neil A.',          9520, 10045.0, 99.55, 6.1, 1.4, 'LANDED'),
-            ('Buzz A.',          9180,  9930.5, 99.30, 7.8, 2.2, 'LANDED'),
-            ('Sally R.',         8750, 10120.0, 98.80, 9.4, 3.1, 'LANDED'),
-            ('Major Tom',        8150, 10042.3, 99.58, 8.3, 2.1, 'LANDED'),
-        ]
-        db.executemany('''
-            INSERT INTO scores 
-            (player_name, score, apogee, altitude_accuracy, touchdown_speed, pad_offset, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', seed_data)
-
-    db.commit()
-    db.close()
+    with sqlite3.connect(DATABASE, timeout=10) as db:
+        db.execute('PRAGMA busy_timeout = 10000')
+        db.execute('PRAGMA journal_mode = WAL')
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS scores (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_name       TEXT    NOT NULL DEFAULT 'Anonymous',
+                score             INTEGER NOT NULL,
+                apogee            REAL    NOT NULL,
+                altitude_accuracy REAL    NOT NULL,
+                touchdown_speed   REAL    NOT NULL,
+                damage_amount     REAL    NOT NULL DEFAULT 0,
+                failure_type      TEXT    NOT NULL DEFAULT 'NONE',
+                status            TEXT    NOT NULL CHECK(status IN ('LANDED','DAMAGED','CRASHED')),
+                created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        columns = {row[1] for row in db.execute('PRAGMA table_info(scores)').fetchall()}
+        if 'damage_amount' not in columns:
+            db.execute('ALTER TABLE scores ADD COLUMN damage_amount REAL NOT NULL DEFAULT 0')
+        if 'failure_type' not in columns:
+            db.execute('ALTER TABLE scores ADD COLUMN failure_type TEXT NOT NULL DEFAULT "NONE"')
+        db.execute('CREATE INDEX IF NOT EXISTS idx_scores_score ON scores(score DESC)')
 
 # Auto-initialize DB on startup
 init_db()
@@ -109,7 +99,7 @@ def index():
 def favicon():
     """Serve favicon.ico directly for browsers requesting default favicon."""
     return send_from_directory(os.path.join(app.root_path, 'static'),
-                               'Logo.ico', mimetype='image/vnd.microsoft.icon')
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 
 @app.route('/api/score', methods=['POST'])
@@ -121,7 +111,7 @@ def submit_score():
 
     required_fields = [
         'player_name', 'score', 'apogee',
-        'altitude_accuracy', 'touchdown_speed', 'pad_offset', 'status',
+        'altitude_accuracy', 'touchdown_speed', 'damage_amount', 'failure_type', 'status',
     ]
     for field in required_fields:
         if field not in data:
@@ -131,15 +121,16 @@ def submit_score():
     cursor = db.execute(
         '''INSERT INTO scores
            (player_name, score, apogee, altitude_accuracy,
-            touchdown_speed, pad_offset, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?)''',
+            touchdown_speed, damage_amount, failure_type, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
         (
             str(data['player_name'])[:20] or 'Anonymous',
             int(data['score']),
             float(data['apogee']),
             float(data['altitude_accuracy']),
             float(data['touchdown_speed']),
-            float(data['pad_offset']),
+            float(data['damage_amount']),
+            str(data.get('failure_type', 'NONE')),
             data['status'],
         ),
     )
@@ -170,7 +161,8 @@ def leaderboard():
             'apogee':            row['apogee'],
             'altitude_accuracy': row['altitude_accuracy'],
             'touchdown_speed':   row['touchdown_speed'],
-            'pad_offset':        row['pad_offset'],
+            'damage_amount':     row['damage_amount'],
+            'failure_type':      row['failure_type'],
             'status':            row['status'],
             'created_at':        row['created_at'],
         })
@@ -189,4 +181,5 @@ def health():
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
     init_db()
+    app.run(host='0.0.0.0', port=5000, debug=True)
     app.run(debug=True, host='0.0.0.0', port=5001)

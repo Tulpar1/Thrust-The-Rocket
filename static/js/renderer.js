@@ -27,6 +27,21 @@ export class Renderer {
             tent2: this._loadSprite('/static/img/field_tent2.png'),
             pad: this._loadSprite('/static/img/pad.png'),
         };
+        this.parachuteSprites = {
+            drogue: [
+                this._loadSprite('/static/img/parachutes/drogue_00_packed.png'),
+                this._loadSprite('/static/img/parachutes/drogue_01_pulling.png'),
+                this._loadSprite('/static/img/parachutes/drogue_02_opening.png'),
+                this._loadSprite('/static/img/parachutes/drogue_03_full.png'),
+            ],
+            main: [
+                this._loadSprite('/static/img/parachutes/main_00_packed.png'),
+                this._loadSprite('/static/img/parachutes/main_01_pulling.png'),
+                this._loadSprite('/static/img/parachutes/main_02_opening.png'),
+                this._loadSprite('/static/img/parachutes/main_03_inflated.png'),
+                this._loadSprite('/static/img/parachutes/main_04_full.png'),
+            ],
+        };
     }
 
     _loadSprite(src) {
@@ -854,12 +869,18 @@ export class Renderer {
     }
 
     _drawDrogueChute(ctx, rocketScreen, scale, angle, inflation = 1.0, oscillation = 0) {
+        const sprites = this.parachuteSprites.drogue;
+        if (sprites.every((sprite) => sprite.complete && sprite.naturalWidth > 0)) {
+            this._drawParachuteSprite(ctx, rocketScreen, scale, angle, inflation, oscillation, sprites, 'drogue');
+            return;
+        }
+
         ctx.save();
         const infl = Math.max(0.20, Math.min(1.0, inflation));
         // Yüksek hızlı hava akımında dinamik kanat titreşimi ve nefes alma
         const flutter = 1.0 + 0.05 * Math.sin((oscillation || 0) * 5.8) + 0.02 * Math.cos((oscillation || 0) * 8.4);
         const size = Math.max(16, 44 * scale * infl * flutter);
-        const ropeLen = Math.max(18, 36 * scale);
+        const ropeLen = Math.max(28, 36 * scale);
         // Rüzgarda ve hücum açısında salınan kanopi merkezi
         const cx = rocketScreen.x - Math.sin(angle) * ropeLen * 0.50;
         const cy = rocketScreen.y - ropeLen;
@@ -918,12 +939,18 @@ export class Renderer {
     }
 
     _drawMainChute(ctx, rocketScreen, scale, angle, inflation = 1.0, oscillation = 0) {
+        const sprites = this.parachuteSprites.main;
+        if (sprites.every((sprite) => sprite.complete && sprite.naturalWidth > 0)) {
+            this._drawParachuteSprite(ctx, rocketScreen, scale, angle, inflation, oscillation, sprites, 'main');
+            return;
+        }
+
         ctx.save();
         const infl = Math.max(0.25, Math.min(1.0, inflation));
         // Doğal kanat nefes alma ve hava dalgalanması
         const breathing = 1.0 + 0.04 * Math.sin((oscillation || 0) * 2.5);
         const size = Math.max(22, 92 * scale * infl * breathing);
-        const ropeLen = Math.max(25, 55 * scale);
+        const ropeLen = Math.max(38, 55 * scale);
         // Rüzgarda salınan kanopi merkezi
         const cx = rocketScreen.x - Math.sin(angle) * ropeLen * 0.45;
         const cy = rocketScreen.y - ropeLen;
@@ -974,16 +1001,75 @@ export class Renderer {
         ctx.restore();
     }
 
+    _drawParachuteSprite(ctx, rocketScreen, scale, angle, inflation, oscillation, sprites, type) {
+        const infl = Math.max(0, Math.min(1, inflation));
+        const frameIndex = Math.min(
+            sprites.length - 1,
+            Math.floor(infl * sprites.length)
+        );
+        const sprite = sprites[frameIndex];
+        const isMain = type === 'main';
+        const breathing = isMain
+            ? 1 + Math.sin(oscillation * 2.5) * 0.025
+            : 1 + Math.sin(oscillation * 5.8) * 0.035;
+        const size = (isMain ? 122 : 68) * scale * breathing;
+        const ropeLength = (isMain ? 68 : 69) * scale;
+        const sway = Math.sin(oscillation * (isMain ? 2.5 : 5.0)) * (isMain ? 0.07 : 0.11);
+        const canopyAngle = sway;
+        const cx = rocketScreen.x - Math.sin(angle) * ropeLength * 0.35;
+        const cy = rocketScreen.y - ropeLength;
+        const boxTop = cy - size * 0.82;
+        const boxBottom = boxTop + size;
+        const rocketAnchorY = rocketScreen.y - 48 * scale;
+        const lineCount = isMain ? 6 : 4;
+        const packedLineWidth = isMain ? 2.5 : 2;
+        const openLineWidth = size * (isMain ? 0.78 : 0.12);
+        const canopyWidth = packedLineWidth + (openLineWidth - packedLineWidth) * infl;
+        const rocketLineWidth = isMain
+            ? 1.5 + infl * 8.5 * scale
+            : 1.2 + infl * 10 * scale;
+
+        ctx.save();
+        ctx.lineWidth = Math.max(0.8, scale * 0.9);
+        ctx.strokeStyle = isMain
+            ? 'rgba(220, 225, 230, 0.78)'
+            : 'rgba(205, 215, 220, 0.72)';
+        ctx.lineCap = 'round';
+
+        for (let i = 0; i < lineCount; i++) {
+            const t = lineCount === 1 ? 0.5 : i / (lineCount - 1);
+            const rocketX = rocketScreen.x + (t - 0.5) * rocketLineWidth;
+            const canopyX = cx + (t - 0.5) * canopyWidth;
+            const controlX = rocketX + (canopyX - rocketX) * 0.22
+                + Math.sin(oscillation * 2 + i) * 0.6 * scale;
+            const controlY = rocketAnchorY + (boxBottom - rocketAnchorY) * 0.32;
+
+            ctx.beginPath();
+            ctx.moveTo(rocketX, rocketAnchorY);
+            ctx.quadraticCurveTo(controlX, controlY, canopyX, boxBottom - size * 0.08);
+            ctx.stroke();
+        }
+
+        ctx.translate(cx, boxTop + size * 0.5);
+        ctx.rotate(canopyAngle);
+        ctx.globalAlpha = Math.max(0.45, 0.35 + infl * 0.65);
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.28)';
+        ctx.shadowBlur = Math.max(1, 4 * scale);
+        ctx.shadowOffsetY = Math.max(1, 2 * scale);
+        ctx.drawImage(sprite, -size * 0.5, -size * 0.5, size, size);
+        ctx.restore();
+    }
+
     /* ================================================================== */
     /*  Altitude Markers                                                   */
     /* ================================================================== */
     drawAltitudeMarkers(camera, rocketAlt) {
         const ctx = this.ctx;
 
-        // Draw markers every 500 ft up to 13,000 ft, plus special markers at 800 ft (main chute) and 10,000 ft (target)
+        // Draw markers every 500 ft up to 13,000 ft, plus special markers at 400 ft (main chute) and 10,000 ft (target)
         const markers = [];
         for (let a = 500; a <= 13000; a += 500) markers.push(a);
-        if (!markers.includes(800)) markers.push(800);
+        if (!markers.includes(400)) markers.push(400);
         markers.sort((a, b) => a - b);
 
         ctx.save();
@@ -995,7 +1081,7 @@ export class Renderer {
             if (s.y < -20 || s.y > this.h + 20) continue;
 
             const isTarget = alt === 10000;
-            const isMainArmed = alt === 800;
+            const isMainArmed = alt === 400;
             const isMajor = alt % 1000 === 0;
 
             const alpha = isTarget ? 0.85 : (isMainArmed ? 0.70 : (isMajor ? 0.30 : 0.12));
@@ -1035,7 +1121,7 @@ export class Renderer {
             } else if (isMainArmed) {
                 ctx.fillStyle = '#2ECC71';
                 ctx.textAlign = 'right';
-                ctx.fillText('MAIN CHUTE (800 FT)', this.w - 12, s.y - 7);
+                ctx.fillText('MAIN CHUTE (400 FT)', this.w - 12, s.y - 7);
             } else if (isMajor) {
                 ctx.fillStyle = `rgba(255, 255, 255, ${alpha + 0.25})`;
                 ctx.textAlign = 'right';

@@ -8,6 +8,18 @@
     {
       "src": "static/**",
       "use": "@vercel/static"
+    },
+    {
+      "src": "favicon.ico",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "Logo.ico",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "Logo.png",
+      "use": "@vercel/static"
     }
   ],
   "routes": [
@@ -17,7 +29,15 @@
     },
     {
       "src": "/favicon\\.ico",
+      "dest": "/static/favicon.ico"
+    },
+    {
+      "src": "/Logo\\.ico",
       "dest": "/static/Logo.ico"
+    },
+    {
+      "src": "/Logo\\.png",
+      "dest": "/static/img/logo.png"
     },
     {
       "src": "/(.*)",
