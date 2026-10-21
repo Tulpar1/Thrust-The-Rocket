@@ -8,6 +8,7 @@ score submission and leaderboard retrieval using SQLite.
 import os
 import sqlite3
 import tempfile
+import hmac
 from flask import Flask, render_template, request, jsonify, g, send_from_directory
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +37,15 @@ if IS_VERCEL:
     DATABASE = os.path.join(tempfile.gettempdir(), 'scores.db')
 else:
     DATABASE = os.path.join(BASE_DIR, 'scores.db')
+
+ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN', '')
+
+# This is intentionally conservative. It is a short-term moderation guard, not
+# a replacement for reviewing the leaderboard.
+BLOCKED_NAME_TERMS = {
+    'amk', 'aq', 'orospu', 'sikik', 'siktir', 'yarrak', 'pic', 'piç',
+    'fuck', 'shit', 'bitch', 'cunt', 'nigger',
+}
 
 
 def get_db():
@@ -117,6 +127,33 @@ def submit_score():
         if field not in data:
             return jsonify({'status': 'error', 'message': f'Missing: {field}'}), 400
 
+    player_name = str(data['player_name']).strip()
+    normalized_name = ''.join(
+        character for character in player_name.casefold()
+        if character.isalnum()
+    )
+    if not player_name or len(player_name) > 20:
+        return jsonify({'status': 'error', 'message': 'Invalid player name'}), 400
+    if any(term in normalized_name for term in BLOCKED_NAME_TERMS):
+        return jsonify({
+            'status': 'error',
+            'message': 'This player name is not allowed',
+        }), 400
+
+    try:
+        score = int(data['score'])
+        apogee = float(data['apogee'])
+        altitude_accuracy = float(data['altitude_accuracy'])
+        touchdown_speed = float(data['touchdown_speed'])
+        damage_amount = float(data['damage_amount'])
+        failure_type = str(data.get('failure_type', 'NONE'))[:40]
+        status = str(data['status'])
+    except (TypeError, ValueError):
+        return jsonify({'status': 'error', 'message': 'Invalid score data'}), 400
+
+    if status not in {'LANDED', 'DAMAGED', 'CRASHED'}:
+        return jsonify({'status': 'error', 'message': 'Invalid status'}), 400
+
     db = get_db()
     cursor = db.execute(
         '''INSERT INTO scores
@@ -124,24 +161,62 @@ def submit_score():
             touchdown_speed, damage_amount, failure_type, status)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
         (
-            str(data['player_name'])[:20] or 'Anonymous',
-            int(data['score']),
-            float(data['apogee']),
-            float(data['altitude_accuracy']),
-            float(data['touchdown_speed']),
-            float(data['damage_amount']),
-            str(data.get('failure_type', 'NONE')),
-            data['status'],
+            player_name[:20] or 'Anonymous',
+            score,
+            apogee,
+            altitude_accuracy,
+            touchdown_speed,
+            damage_amount,
+            failure_type,
+            status,
         ),
     )
     db.commit()
 
     rank = db.execute(
         'SELECT COUNT(*) FROM scores WHERE score > ?',
-        (int(data['score']),),
+        (score,),
     ).fetchone()[0] + 1
 
     return jsonify({'status': 'success', 'score_id': cursor.lastrowid, 'rank': rank})
+
+
+def _is_admin_request():
+    """Check the bearer token without exposing it in a URL or response."""
+    if not ADMIN_TOKEN:
+        return False
+    authorization = request.headers.get('Authorization', '')
+    supplied_token = authorization.removeprefix('Bearer ').strip()
+    return hmac.compare_digest(supplied_token, ADMIN_TOKEN)
+
+
+@app.route('/api/admin/scores', methods=['GET'])
+def admin_scores():
+    """Return score IDs for short-term moderation."""
+    if not _is_admin_request():
+        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
+
+    rows = get_db().execute(
+        '''SELECT id, player_name, score, created_at
+           FROM scores ORDER BY created_at DESC LIMIT 100'''
+    ).fetchall()
+    return jsonify({
+        'status': 'success',
+        'scores': [dict(row) for row in rows],
+    })
+
+
+@app.route('/api/admin/scores/<int:score_id>', methods=['DELETE'])
+def delete_score(score_id):
+    """Delete one score from the active temporary SQLite instance."""
+    if not _is_admin_request():
+        return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
+
+    cursor = get_db().execute('DELETE FROM scores WHERE id = ?', (score_id,))
+    get_db().commit()
+    if cursor.rowcount == 0:
+        return jsonify({'status': 'error', 'message': 'Score not found'}), 404
+    return jsonify({'status': 'success', 'deleted_id': score_id})
 
 
 @app.route('/api/leaderboard')

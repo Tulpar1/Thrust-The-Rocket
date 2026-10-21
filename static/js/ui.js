@@ -485,6 +485,9 @@ export class UIManager {
                 this.els.btnSubmit.textContent = `RANK #${json.rank} — SUBMITTED!`;
                 this.els.btnSubmit.disabled = true;
                 this.els.btnSubmit.style.opacity = '0.6';
+            } else if (json.message) {
+                console.warn('Score submission rejected:', json.message);
+                this.els.btnSubmit.textContent = json.message;
             }
         } catch (err) {
             console.warn('Score submission failed:', err);
