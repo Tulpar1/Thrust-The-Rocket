@@ -97,6 +97,48 @@ html, body {
     display: none !important;
 }
 
+.db-loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(5, 8, 16, 0.48);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+}
+
+.db-loading-overlay.hidden {
+    display: none !important;
+}
+
+.db-loader {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 16px 18px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 10px;
+    background: rgba(10, 16, 29, 0.88);
+}
+
+.db-loader span {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--brand-orange);
+    animation: dbLoaderPulse 0.9s ease-in-out infinite;
+}
+
+.db-loader span:nth-child(2) { animation-delay: 0.15s; }
+.db-loader span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes dbLoaderPulse {
+    0%, 100% { transform: scale(0.65); opacity: 0.35; }
+    50% { transform: scale(1); opacity: 1; }
+}
+
 .boot-loader {
     position: fixed;
     inset: 0;
@@ -182,6 +224,31 @@ html, body {
     font-weight: 800;
     color: var(--brand-orange);
     letter-spacing: 0.10em;
+}
+
+.flight-retry-btn {
+    position: relative;
+    z-index: 21;
+    margin-left: 8px;
+    padding: 3px 7px;
+    border: 1px solid var(--brand-orange);
+    border-radius: 3px;
+    background: rgba(217, 86, 35, 0.12);
+    color: var(--brand-orange);
+    font-family: var(--font-display);
+    font-size: 0.52rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    line-height: 1;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+.flight-retry-btn:hover,
+.flight-retry-btn:focus-visible {
+    background: var(--brand-orange);
+    color: #fff;
+    outline: none;
 }
 
 .hud-label {
@@ -373,6 +440,37 @@ html, body {
     font-size: 1rem;
     font-weight: 700;
     letter-spacing: 0.12em;
+}
+
+.steering-arrows {
+    position: fixed;
+    inset: 0;
+    top: 50%;
+    height: 0;
+    z-index: 12;
+    pointer-events: none;
+    opacity: 0.92;
+}
+
+.steering-arrow {
+    position: absolute;
+    top: -1.7rem;
+    color: #FFFFFF;
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 8vw, 5.2rem);
+    font-weight: 800;
+    line-height: 1;
+    text-shadow:
+        0 0 6px rgba(0, 0, 0, 0.95),
+        0 0 14px rgba(255, 255, 255, 0.65);
+}
+
+.steering-arrow-left {
+    left: 18%;
+}
+
+.steering-arrow-right {
+    right: 18%;
 }
 
 /* ---------- Countdown ---------- */
@@ -1159,6 +1257,26 @@ html, body {
     border-color: var(--brand-orange);
     box-shadow: 0 0 12px rgba(255, 107, 0, 0.28);
     background: rgba(15, 23, 42, 0.95);
+}
+
+.callsign-input.invalid {
+    border-color: var(--status-danger);
+}
+
+.callsign-error {
+    min-height: 0;
+    color: #FFAAAA;
+    font-family: var(--font-display);
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1.2;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.callsign-error.visible {
+    min-height: 15px;
+    opacity: 1;
 }
 
 .callsign-section .btn-primary {

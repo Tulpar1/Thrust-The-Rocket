@@ -126,8 +126,16 @@ def submit_score():
         character for character in player_name.casefold()
         if character.isalnum()
     )
-    if not player_name or len(player_name) > 20:
-        return jsonify({'status': 'error', 'message': 'Invalid player name'}), 400
+    if len(player_name) < 3 or len(player_name) > 20:
+        return jsonify({
+            'status': 'error',
+            'message': 'Callsign must be between 3 and 20 characters',
+        }), 400
+    if player_name.casefold() == 'anonymous':
+        return jsonify({
+            'status': 'error',
+            'message': 'Anonymous submissions are not allowed',
+        }), 400
     if any(term in normalized_name for term in BLOCKED_NAME_TERMS):
         return jsonify({
             'status': 'error',

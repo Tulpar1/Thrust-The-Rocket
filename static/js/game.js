@@ -88,6 +88,7 @@ class GameEngine {
         this.finalX         = 0;
         this.failureType    = 'NONE';
         this.lastScoreData  = null;
+        this.drogueAttempts = 0;
 
         this.stateTimer     = 0;
         this.countdownStep  = 3;
@@ -165,6 +166,14 @@ class GameEngine {
 
     onRetryMission() {
         this.ui.hideDebrief();
+        this.audio.stopAll();
+        this.audio.stopFuelPump();
+        this.audio.stopEngineRoar();
+        this.ui.hideActionPrompt();
+        this.ui.hideCountdown();
+        this.ui.hidePadSteerHint();
+        this.ui.hideSteeringArrows();
+        this.input.flush();
         this.transitionTo(STATE.PAD_READY);
     }
 
@@ -200,6 +209,7 @@ class GameEngine {
                 this.ui.hidePadSteerHint();
                 this.ui.hideCountdown();
                 this.ui.hideCinematic();
+                this.ui.hideSteeringArrows();
                 break;
 
             case STATE.CINEMATIC:
@@ -221,6 +231,7 @@ class GameEngine {
                 this.ui.hideFuelBar();
                 this.ui.hideActionPrompt();
                 this.ui.hideCountdown();
+                this.ui.hideSteeringArrows();
                 this.ui.showCinematic();
 
                 this.ui.startPrologueTypewriter(
@@ -239,6 +250,8 @@ class GameEngine {
                 this.chutePenalty = 0;
                 this.finalVy      = 0;
                 this.finalX       = 0;
+                this.drogueAttempts = 0;
+                this.ui.hideSteeringArrows();
                 this.particles.clear();
                 this.physics.wind.reset();
                 this.camera.setPadPreset();
@@ -282,6 +295,7 @@ class GameEngine {
             case STATE.ASCENT:
                 this.ui.hideCountdown();
                 this.engineOn = true;
+                this.physics.wind.active = true;
                 if (this.failureType === 'FIN_FLUTTER') {
                     this.ui.showActionPrompt('FIN FLUTTER DETECTED · ATTITUDE UNSTABLE', true);
                 }
@@ -306,7 +320,6 @@ class GameEngine {
                     this.ui.hideActionPrompt();
                 } else {
                     this.audio.playWarningBeep();
-                    this.ui.showActionPrompt('MATCH THE GREEN WINDOW · TAP TO DEPLOY', true);
                 }
                 break;
 
@@ -319,13 +332,14 @@ class GameEngine {
                 this.audio.playChutePopDrogue();
                 this.camera.addShake(8, 0.3);
                 this.physics.wind.active = true;
-                this.ui.hideActionPrompt();
+                this.ui.showSteeringArrows();
                 break;
 
             case STATE.FREEFALL:
                 this.chuteState    = 'none';
                 this.chutePenalty += 1500;
                 this.physics.wind.active = true;
+                this.ui.showSteeringArrows();
                 this.ui.showActionPrompt('MISSED DROGUE! RAPID TUMBLE DIVE', true);
                 break;
 
@@ -343,10 +357,13 @@ class GameEngine {
 
             case STATE.MAIN_DEPLOYED:
                 this.chuteState = 'main';
+                this.ui.hideSteeringArrows();
+                this.rocket.steerInput = 0;
                 this.rocket.chuteDeployAlt = this.rocket.y;
                 this.rocket.chuteTimer = 0;
                 this.rocket.chuteInflation = 0;
                 this.rocket.chuteOscillation = 0;
+                this.physics.wind.lock();
                 this.audio.playChutePopMain();
                 this.camera.addShake(10, 0.35);
                 this.ui.hideActionPrompt();
@@ -360,6 +377,7 @@ class GameEngine {
             case STATE.TOUCHDOWN:
                 this.finalVy = this.rocket.impactVy || Math.abs(this.rocket.vy);
                 this.finalX  = this.rocket.x;
+                this.ui.hideSteeringArrows();
                 const touchdownTargetX = this.rocket.targetPadX || this.rocket.randomPadX || 0;
                 const touchdownOffset = Math.abs(this.finalX - touchdownTargetX);
                 this.audio.stopAll();
@@ -383,6 +401,7 @@ class GameEngine {
             case STATE.CRASH:
                 this.finalVy = this.rocket.impactVy || Math.abs(this.rocket.vy);
                 this.finalX  = this.rocket.x;
+                this.ui.hideSteeringArrows();
                 this.audio.stopAll();
                 this.audio.playExplosion();
                 this.physics.wind.active = false;
@@ -447,7 +466,9 @@ class GameEngine {
     _update(dt) {
         this.input.update(dt);
         // Kullanıcı yönlendirmesini doğrudan rokete aktar
-        this.rocket.steerInput = this.input.steerInput;
+        this.rocket.steerInput = this.state === STATE.MAIN_DEPLOYED
+            ? 0
+            : this.input.steerInput;
 
         switch (this.state) {
             case STATE.TITLE:
@@ -569,7 +590,7 @@ class GameEngine {
                     altitude: this.rocket.y,
                     speed:    this.rocket.vy,
                     stage:    'STAGE 1: ASCENT',
-                    wind:     0,
+                    wind:     this.physics.wind.currentForce,
                     apogee:   this.rocket.y,
                 });
 
@@ -590,7 +611,7 @@ class GameEngine {
                     altitude: this.rocket.y,
                     speed:    this.rocket.vy,
                     stage:    'COASTING TO APOGEE',
-                    wind:     0,
+                    wind:     this.physics.wind.currentForce,
                     apogee:   this.rocket.y,
                 });
 
@@ -615,8 +636,13 @@ class GameEngine {
                 if (this.input.consumeTap()) {
                     if (this._isDrogueTimingWindowOpen()) {
                         this.transitionTo(STATE.DROGUE_DEPLOYED);
-                    } else if (!this.rocket.avionicsFailed) {
-                        this.ui.showActionPrompt('TIMING MISSED · WAIT FOR THE GREEN WINDOW', true);
+                    } else {
+                        this.drogueAttempts += 1;
+                        if (this.drogueAttempts >= 2) {
+                            this.transitionTo(STATE.FREEFALL);
+                        } else if (!this.rocket.avionicsFailed) {
+                            this.ui.showActionPrompt('TIMING MISSED · 1 ATTEMPT LEFT', true);
+                        }
                     }
                 } else if (this.stateTimer <= 0) {
                     this.transitionTo(STATE.FREEFALL);
@@ -673,7 +699,9 @@ class GameEngine {
                 this.ui.updateHUD({
                     altitude: this.rocket.y,
                     speed:    this.rocket.vy,
-                    stage:    inSweetSpot ? '★ SWEET SPOT ACTIVE ★' : `ARMED (${Math.round(this.rocket.y)} FT)`,
+                    stage:    inSweetSpot
+                        ? '★ SWEET SPOT ACTIVE ★'
+                        : `ARMED (${Math.round(this.rocket.y)} FT)`,
                     wind:     this.physics.wind.currentForce,
                     apogee:   this.apogee,
                 });
@@ -696,7 +724,7 @@ class GameEngine {
                 this.ui.updateHUD({
                     altitude: this.rocket.y,
                     speed:    this.rocket.vy,
-                    stage:    `STAGE 3: FINAL (TARGET: ${Math.abs(this.rocket.x - (this.rocket.targetPadX || this.rocket.randomPadX || 0)).toFixed(0)} FT)`,
+                    stage:    `STAGE 3: FINAL · STEERING LOCKED (TARGET: ${Math.abs(this.rocket.x - (this.rocket.targetPadX || this.rocket.randomPadX || 0)).toFixed(0)} FT)`,
                     wind:     this.physics.wind.currentForce,
                     apogee:   this.apogee,
                 });
@@ -914,7 +942,9 @@ class GameEngine {
         const startAngle = Math.PI * 0.75;
         const arcSpan = Math.PI * 4 / 3;
         const elapsed = Math.max(0, Math.min(1, (3.2 - this.stateTimer) / 3.2));
-        const needleAngle = startAngle + elapsed * arcSpan;
+        const sweep = (elapsed * 4) % 2;
+        const pingPongProgress = sweep <= 1 ? sweep : 2 - sweep;
+        const needleAngle = startAngle + pingPongProgress * arcSpan;
         const targetCenter = startAngle + arcSpan * 0.58;
         const targetHalfWidth = 0.13;
         return {

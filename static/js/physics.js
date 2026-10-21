@@ -49,10 +49,10 @@ export const PHYSICS = {
     HIGH_ALT_DESCENT_SCALE: 2.8,
 
     // Rüzgar ve Sapma
-    WIND_GUST_MIN: -16.0,       // ft/s² yanal ivme (Sol)
-    WIND_GUST_MAX: 16.0,        // ft/s² yanal ivme (Sağ)
-    WIND_GUST_INTERVAL: [1.5, 4.0],
-    WIND_GUST_DURATION: [0.7, 2.6],
+    WIND_GUST_MIN: -24.0,       // ft/s² yanal ivme (Sol)
+    WIND_GUST_MAX: 24.0,        // ft/s² yanal ivme (Sağ)
+    WIND_GUST_INTERVAL: [1.0, 3.0],
+    WIND_GUST_DURATION: [0.9, 3.0],
 
     // İrtifa Eşikleri
     TARGET_ALTITUDE: 10000,     // ft (Hedef irtifa)
@@ -110,6 +110,7 @@ export class WindSystem {
         this.gustTimer = 3.0;
         this.gustRemaining = 0;
         this.active = false;
+        this.locked = false;
     }
 
     reset() {
@@ -118,10 +119,16 @@ export class WindSystem {
         this.gustTimer = _rand(2.0, 4.0);
         this.gustRemaining = 0;
         this.active = false;
+        this.locked = false;
+    }
+
+    lock() {
+        this.locked = true;
     }
 
     update(dt) {
         if (!this.active) { this.currentForce = 0; return 0; }
+        if (this.locked) return this.currentForce;
 
         if (this.gustRemaining <= 0) {
             this.gustTimer -= dt;
@@ -264,7 +271,9 @@ export class PhysicsEngine {
         // 3. Rüzgar, Yönlendirme (Steering) ve Sarkaç / Burun Eğme Fiziği
         // ------------------------------------------------------------------
         const windForce = this.wind.update(stepDt);
-        const playerSteerForce = (rocket.steerInput || 0) * 22.0; // Yanal yönlendirme gücü
+        const playerSteerForce = chuteState === 'main'
+            ? 0
+            : (rocket.steerInput || 0) * 22.0; // Ana paraşüt sonrası yönlendirme kilitli
 
         if (chuteState !== 'none') {
             // Paraşüt açıkken rüzgar sürüklenmesi + oyuncunun yönlendirmesi
@@ -273,7 +282,7 @@ export class PhysicsEngine {
             // Sarkaç (Pendulum) salınımı: Açılışta şokla başlar, zamanla sönümlenir
             const oscTime = chuteState === 'main' ? rocket.chuteOscillation : rocket.drogueOscillation;
             const shockSwing = Math.sin(oscTime * 5.5) * 0.22 * Math.exp(-oscTime * 0.35);
-            const steerTilt = (rocket.steerInput || 0) * 0.20;
+            const steerTilt = chuteState === 'main' ? 0 : (rocket.steerInput || 0) * 0.20;
             const windTilt = windForce * 0.014;
             const targetAngle = windTilt + steerTilt + shockSwing;
 

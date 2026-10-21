@@ -28,6 +28,8 @@ export class UIManager {
             actionPrompt:    document.getElementById('action-prompt'),
             actionText:      document.getElementById('action-prompt-text'),
             padSteerHint:    document.getElementById('pad-steer-hint'),
+            steeringArrows:  document.getElementById('steering-arrows'),
+            btnFlightRetry:  document.getElementById('btn-flight-retry'),
 
             countdownOverlay: document.getElementById('countdown-overlay'),
             countdownNumber:  document.getElementById('countdown-number'),
@@ -54,6 +56,7 @@ export class UIManager {
             starRating:      document.getElementById('star-rating'),
             callsignSection: document.getElementById('callsign-section'),
             callsignInput:   document.getElementById('callsign-input'),
+            callsignError:   document.getElementById('callsign-error'),
             btnSubmit:       document.getElementById('btn-submit-score'),
             btnRetry:        document.getElementById('btn-retry'),
             btnMenu:         document.getElementById('btn-menu'),
@@ -61,6 +64,7 @@ export class UIManager {
             leaderboardScreen: document.getElementById('leaderboard-screen'),
             leaderboardList:   document.getElementById('leaderboard-list'),
             btnLBClose:        document.getElementById('btn-lb-close'),
+            dbLoadingOverlay:  document.getElementById('db-loading-overlay'),
 
             // Cinematic Opening Elements
             cinematicOverlay:  document.getElementById('cinematic-overlay'),
@@ -72,6 +76,9 @@ export class UIManager {
         };
 
         this._typewriterTimers = [];
+        this._leaderboardCache = null;
+        this._leaderboardCacheTime = 0;
+        this._leaderboardCacheTtl = 30000;
         this.telemetryLost = false;
         this._bindButtons();
     }
@@ -96,16 +103,29 @@ export class UIManager {
             if (this.callbacks.onRetry) this.callbacks.onRetry();
         });
 
+        e.btnFlightRetry.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (this.callbacks.onRetry) this.callbacks.onRetry();
+        });
+
         e.btnMenu.addEventListener('click', () => {
             if (this.callbacks.onMenu) this.callbacks.onMenu();
         });
 
         e.btnSubmit.addEventListener('click', () => {
-            const name = (e.callsignInput.value.trim()) || 'Anonymous';
+            const name = e.callsignInput.value.trim();
+            if (name.length < 3) {
+                this.showCallsignError('Please enter a callsign with at least 3 characters.');
+                e.callsignInput.focus();
+                return;
+            }
+            this.clearCallsignError();
             if (this.callbacks.onSubmitScore) {
                 this.callbacks.onSubmitScore(name, this.lastDebriefData);
             }
         });
+
+        e.callsignInput.addEventListener('input', () => this.clearCallsignError());
 
         const openLeaderboard = () => {
             if (this.callbacks.onLeaderboard) this.callbacks.onLeaderboard();
@@ -250,6 +270,8 @@ export class UIManager {
     /* ================================================================== */
     showHUD()  { this.telemetryLost = false; this.els.hud.classList.remove('hidden'); }
     hideHUD()  { this.els.hud.classList.add('hidden'); }
+    showSteeringArrows() { this.els.steeringArrows.classList.remove('hidden'); }
+    hideSteeringArrows() { this.els.steeringArrows.classList.add('hidden'); }
 
     /**
      * Update live HUD telemetry.
@@ -411,10 +433,23 @@ export class UIManager {
 
         this.lastDebriefData = data;
         e.callsignInput.value = '';
+        this.clearCallsignError();
         e.btnSubmit.disabled = false;
         e.btnSubmit.textContent = 'SUBMIT SCORE';
         e.btnSubmit.style.opacity = '1';
         e.debriefScreen.classList.remove('hidden');
+    }
+
+    showCallsignError(message) {
+        this.els.callsignError.textContent = message;
+        this.els.callsignError.classList.add('visible');
+        this.els.callsignInput.classList.add('invalid');
+    }
+
+    clearCallsignError() {
+        this.els.callsignError.textContent = '';
+        this.els.callsignError.classList.remove('visible');
+        this.els.callsignInput.classList.remove('invalid');
     }
 
     hideDebrief() {
@@ -425,38 +460,56 @@ export class UIManager {
     /*  Leaderboard                                                        */
     /* ================================================================== */
     async showLeaderboard() {
+        const now = Date.now();
+        if (this._leaderboardCache && now - this._leaderboardCacheTime < this._leaderboardCacheTtl) {
+            this._renderLeaderboard(this._leaderboardCache);
+            this.els.leaderboardScreen.classList.remove('hidden');
+            return;
+        }
+
+        this._setDatabaseLoading(true);
         try {
-            const resp = await fetch('/api/leaderboard');
+            const resp = await fetch('/api/leaderboard', { cache: 'no-store' });
+            if (!resp.ok) throw new Error(`Leaderboard request failed: ${resp.status}`);
             const json = await resp.json();
             const list = json.leaderboard || [];
-
-            const container = this.els.leaderboardList;
-            container.innerHTML = '';
-
-            if (list.length === 0) {
-                container.innerHTML = '<div class="leaderboard-empty">No scores yet. Be the first!</div>';
-            } else {
-                for (const entry of list) {
-                    const row = document.createElement('div');
-                    row.className = 'lb-row';
-                    if (entry.rank === 1) row.classList.add('gold');
-                    if (entry.rank === 2) row.classList.add('silver');
-                    if (entry.rank === 3) row.classList.add('bronze');
-
-                    row.innerHTML = `
-                        <span class="lb-rank">#${entry.rank}</span>
-                        <span class="lb-name">${_esc(entry.player_name)}</span>
-                        <span class="lb-score">${entry.score.toLocaleString()}</span>
-                        <span class="lb-apogee">${Math.round(entry.apogee).toLocaleString()} ft</span>
-                    `;
-                    container.appendChild(row);
-                }
-            }
-
+            this._leaderboardCache = list;
+            this._leaderboardCacheTime = Date.now();
+            this._renderLeaderboard(list);
             this.els.leaderboardScreen.classList.remove('hidden');
         } catch (err) {
             console.warn('Failed to load leaderboard:', err);
+        } finally {
+            this._setDatabaseLoading(false);
         }
+    }
+
+    _renderLeaderboard(list) {
+        const container = this.els.leaderboardList;
+        container.innerHTML = '';
+        if (list.length === 0) {
+            container.innerHTML = '<div class="leaderboard-empty">No scores yet. Be the first!</div>';
+            return;
+        }
+        for (const entry of list) {
+            const row = document.createElement('div');
+            row.className = 'lb-row';
+            if (entry.rank === 1) row.classList.add('gold');
+            if (entry.rank === 2) row.classList.add('silver');
+            if (entry.rank === 3) row.classList.add('bronze');
+            row.innerHTML = `
+                <span class="lb-rank">#${entry.rank}</span>
+                <span class="lb-name">${_esc(entry.player_name)}</span>
+                <span class="lb-score">${entry.score.toLocaleString()}</span>
+                <span class="lb-apogee">${Math.round(entry.apogee).toLocaleString()} ft</span>
+            `;
+            container.appendChild(row);
+        }
+    }
+
+    _setDatabaseLoading(isLoading) {
+        this.els.dbLoadingOverlay.classList.toggle('hidden', !isLoading);
+        this.els.dbLoadingOverlay.setAttribute('aria-hidden', String(!isLoading));
     }
 
     hideLeaderboard() {
@@ -473,10 +526,16 @@ export class UIManager {
      */
     async submitScore(playerName, scoreData) {
         if (!scoreData) scoreData = this.lastDebriefData || {};
+        if (playerName.trim().length < 3) {
+            this.showCallsignError('Please enter a callsign with at least 3 characters.');
+            return;
+        }
+        this._setDatabaseLoading(true);
         try {
             const resp = await fetch('/api/score', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                cache: 'no-store',
                 body: JSON.stringify({
                     player_name:       playerName,
                     score:             scoreData.total || 0,
@@ -490,16 +549,21 @@ export class UIManager {
             });
             const json = await resp.json();
             if (json.status === 'success') {
+                this._leaderboardCache = null;
+                this._leaderboardCacheTime = 0;
                 // Disable submit button and show rank
                 this.els.btnSubmit.textContent = `RANK #${json.rank} — SUBMITTED!`;
                 this.els.btnSubmit.disabled = true;
                 this.els.btnSubmit.style.opacity = '0.6';
             } else if (json.message) {
                 console.warn('Score submission rejected:', json.message);
-                this.els.btnSubmit.textContent = json.message;
+                this.showCallsignError(json.message);
             }
         } catch (err) {
             console.warn('Score submission failed:', err);
+            this.showCallsignError('Score could not be submitted. Please try again.');
+        } finally {
+            this._setDatabaseLoading(false);
         }
     }
 }
