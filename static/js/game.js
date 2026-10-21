@@ -197,6 +197,7 @@ class GameEngine {
                 this.ui.hideHUD();
                 this.ui.hideFuelBar();
                 this.ui.hideActionPrompt();
+                this.ui.hidePadSteerHint();
                 this.ui.hideCountdown();
                 this.ui.hideCinematic();
                 break;
@@ -248,6 +249,7 @@ class GameEngine {
                 this.ui.showHUD();
                 this.ui.showFuelBar();
                 this.ui.updateFuelBar(0);
+                this.ui.showPadSteerHint();
                 this.ui.showActionPrompt('HOLD TO TIME THE 10K LAUNCH');
                 this.ui.updateHUD({
                     altitude: 0,
@@ -259,6 +261,7 @@ class GameEngine {
                 break;
 
             case STATE.FUELING:
+                this.ui.hidePadSteerHint();
                 this.audio.startFuelPump();
                 this.ui.showActionPrompt('TIME THE 10K MARKER · RELEASE TO LAUNCH');
                 break;
@@ -267,6 +270,7 @@ class GameEngine {
                 this.audio.stopFuelPump();
                 this.ui.hideFuelBar();
                 this.ui.hideActionPrompt();
+                this.ui.hidePadSteerHint();
                 this.ignitionElapsed = 0;
                 this.countdownStep   = 4;
                 this.camera.setIgnitionPreset();
@@ -302,7 +306,7 @@ class GameEngine {
                     this.ui.hideActionPrompt();
                 } else {
                     this.audio.playWarningBeep();
-                    this.ui.showActionPrompt('TAP TO DEPLOY DROGUE CHUTE!', true);
+                    this.ui.showActionPrompt('MATCH THE GREEN WINDOW · TAP TO DEPLOY', true);
                 }
                 break;
 
@@ -609,7 +613,11 @@ class GameEngine {
 
                 // Aviyonik çökse bile oyuncu manuel basabilir!
                 if (this.input.consumeTap()) {
-                    this.transitionTo(STATE.DROGUE_DEPLOYED);
+                    if (this._isDrogueTimingWindowOpen()) {
+                        this.transitionTo(STATE.DROGUE_DEPLOYED);
+                    } else if (!this.rocket.avionicsFailed) {
+                        this.ui.showActionPrompt('TIMING MISSED · WAIT FOR THE GREEN WINDOW', true);
+                    }
                 } else if (this.stateTimer <= 0) {
                     this.transitionTo(STATE.FREEFALL);
                 }
@@ -804,6 +812,9 @@ class GameEngine {
         if (this.state !== STATE.TITLE && this.state !== STATE.CINEMATIC) {
             this._drawLandingTargetHUD();
         }
+        if (this.state === STATE.APOGEE_WAIT) {
+            this._drawDrogueTimingHUD();
+        }
 
         if (this.state === STATE.CINEMATIC) {
             const progress = Math.max(0, Math.min(1, (5.4 - this.stateTimer) / 5.4));
@@ -896,6 +907,90 @@ class GameEngine {
             }
         }
 
+        ctx.restore();
+    }
+
+    _getDrogueTiming() {
+        const startAngle = Math.PI * 0.75;
+        const arcSpan = Math.PI * 4 / 3;
+        const elapsed = Math.max(0, Math.min(1, (3.2 - this.stateTimer) / 3.2));
+        const needleAngle = startAngle + elapsed * arcSpan;
+        const targetCenter = startAngle + arcSpan * 0.58;
+        const targetHalfWidth = 0.13;
+        return {
+            startAngle,
+            arcSpan,
+            needleAngle,
+            targetCenter,
+            targetHalfWidth,
+        };
+    }
+
+    _isDrogueTimingWindowOpen() {
+        const timing = this._getDrogueTiming();
+        return Math.abs(timing.needleAngle - timing.targetCenter) <= timing.targetHalfWidth;
+    }
+
+    _drawDrogueTimingHUD() {
+        const ctx = this.ctx;
+        const w = this.camera.screenW || window.innerWidth;
+        const h = this.camera.screenH || window.innerHeight;
+        const timing = this._getDrogueTiming();
+        const radius = Math.min(76, Math.max(58, w * 0.16));
+        const centerX = w - radius - 28;
+        const centerY = Math.max(radius + 34, h * 0.25);
+        const targetStart = timing.targetCenter - timing.targetHalfWidth;
+        const targetEnd = timing.targetCenter + timing.targetHalfWidth;
+        const needleX = centerX + Math.cos(timing.needleAngle) * (radius - 8);
+        const needleY = centerY + Math.sin(timing.needleAngle) * (radius - 8);
+
+        ctx.save();
+        ctx.lineCap = 'round';
+
+        ctx.fillStyle = 'rgba(8, 13, 26, 0.88)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius + 18, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, timing.startAngle, timing.startAngle + timing.arcSpan);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#22C55E';
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, targetStart, targetEnd);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#F59E0B';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(centerX, centerY);
+        ctx.lineTo(needleX, needleY);
+        ctx.stroke();
+
+        ctx.fillStyle = '#F59E0B';
+        ctx.beginPath();
+        ctx.arc(needleX, needleY, 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.font = '800 10px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('DROGUE', centerX, centerY - 8);
+        ctx.fillText('TIMING', centerX, centerY + 7);
+        ctx.font = '700 9px monospace';
+        ctx.fillStyle = '#22C55E';
+        ctx.fillText('TAP IN GREEN', centerX, centerY + radius + 30);
         ctx.restore();
     }
 

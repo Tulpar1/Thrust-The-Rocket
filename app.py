@@ -1,25 +1,38 @@
 """
-Thrust The Rocket — Flask Backend
+Thrust The Rocket - Flask Backend
 =================================
-Serves the game frontend and provides REST API endpoints for
-score submission and leaderboard retrieval using SQLite.
+Serves the game frontend and provides REST API endpoints backed by Supabase.
 """
 
-import os
-import sqlite3
-import tempfile
 import hmac
-from flask import Flask, render_template, request, jsonify, g, send_from_directory
+import json
+import os
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 app = Flask(
     __name__,
     template_folder=os.path.join(BASE_DIR, 'templates'),
-    static_folder=os.path.join(BASE_DIR, 'static')
+    static_folder=os.path.join(BASE_DIR, 'static'),
 )
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 app.config['TEMPLATES_AUTO_RELOAD'] = True
+
+SUPABASE_URL = os.environ.get('SUPABASE_URL', '').rstrip('/')
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
+ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN', '')
+SUPABASE_TABLE = 'scores'
+
+BLOCKED_NAME_TERMS = {
+    'amk', 'aq', 'orospu', 'sikik', 'siktir', 'yarrak', 'pic', 'piç',
+    'fuck', 'shit', 'bitch', 'cunt', 'nigger',
+}
+
 
 @app.after_request
 def add_header(response):
@@ -28,100 +41,81 @@ def add_header(response):
     response.headers['Expires'] = '0'
     return response
 
-# ---------------------------------------------------------------------------
-# Database helpers
-# ---------------------------------------------------------------------------
-# Vercel sunucusuz (serverless) ortamında sadece geçici klasör yazılabilir (read-write) durumdadır.
-IS_VERCEL = bool(os.environ.get('VERCEL'))
-if IS_VERCEL:
-    DATABASE = os.path.join(tempfile.gettempdir(), 'scores.db')
-else:
-    DATABASE = os.path.join(BASE_DIR, 'scores.db')
 
-ADMIN_TOKEN = os.environ.get('ADMIN_TOKEN', '')
+def _supabase_request(method, path='', payload=None, query=None, prefer=None):
+    """Call Supabase REST with the server-only service-role key."""
+    if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+        raise RuntimeError('Supabase environment variables are not configured')
 
-# This is intentionally conservative. It is a short-term moderation guard, not
-# a replacement for reviewing the leaderboard.
-BLOCKED_NAME_TERMS = {
-    'amk', 'aq', 'orospu', 'sikik', 'siktir', 'yarrak', 'pic', 'piç',
-    'fuck', 'shit', 'bitch', 'cunt', 'nigger',
-}
+    url = f'{SUPABASE_URL}/rest/v1/{SUPABASE_TABLE}{path}'
+    if query:
+        url = f'{url}?{urlencode(query)}'
+    headers = {
+        'apikey': SUPABASE_SERVICE_ROLE_KEY,
+        'Authorization': f'Bearer {SUPABASE_SERVICE_ROLE_KEY}',
+        'Content-Type': 'application/json',
+    }
+    if prefer:
+        headers['Prefer'] = prefer
+    body = json.dumps(payload).encode('utf-8') if payload is not None else None
 
-
-def get_db():
-    """Return a per-request database connection."""
-    if 'db' not in g:
-        g.db = sqlite3.connect(DATABASE, timeout=10)
-        g.db.execute('PRAGMA busy_timeout = 10000')
-        g.db.row_factory = sqlite3.Row
-    return g.db
-
-
-@app.teardown_appcontext
-def close_db(exception):
-    """Close the database connection at the end of each request."""
-    db = g.pop('db', None)
-    if db is not None:
-        db.close()
+    try:
+        with urlopen(
+            Request(url, data=body, headers=headers, method=method),
+            timeout=10,
+        ) as response:
+            raw = response.read()
+            return (json.loads(raw) if raw else []), response.headers
+    except HTTPError as error:
+        detail = error.read().decode('utf-8', errors='replace')
+        app.logger.error('Supabase request failed (%s): %s', error.code, detail)
+        raise RuntimeError('Supabase request failed') from error
+    except URLError as error:
+        app.logger.error('Supabase connection failed: %s', error.reason)
+        raise RuntimeError('Supabase connection failed') from error
 
 
-def init_db():
-    """Create tables and indices without modifying player records."""
-    os.makedirs(os.path.dirname(os.path.abspath(DATABASE)), exist_ok=True)
-    with sqlite3.connect(DATABASE, timeout=10) as db:
-        db.execute('PRAGMA busy_timeout = 10000')
-        db.execute('PRAGMA journal_mode = WAL')
-        db.execute('''
-            CREATE TABLE IF NOT EXISTS scores (
-                id                INTEGER PRIMARY KEY AUTOINCREMENT,
-                player_name       TEXT    NOT NULL DEFAULT 'Anonymous',
-                score             INTEGER NOT NULL,
-                apogee            REAL    NOT NULL,
-                altitude_accuracy REAL    NOT NULL,
-                touchdown_speed   REAL    NOT NULL,
-                damage_amount     REAL    NOT NULL DEFAULT 0,
-                failure_type      TEXT    NOT NULL DEFAULT 'NONE',
-                status            TEXT    NOT NULL CHECK(status IN ('LANDED','DAMAGED','CRASHED')),
-                created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        columns = {row[1] for row in db.execute('PRAGMA table_info(scores)').fetchall()}
-        if 'damage_amount' not in columns:
-            db.execute('ALTER TABLE scores ADD COLUMN damage_amount REAL NOT NULL DEFAULT 0')
-        if 'failure_type' not in columns:
-            db.execute('ALTER TABLE scores ADD COLUMN failure_type TEXT NOT NULL DEFAULT "NONE"')
-        db.execute('CREATE INDEX IF NOT EXISTS idx_scores_score ON scores(score DESC)')
-
-# Auto-initialize DB on startup
-init_db()
+def _database_error_response(error):
+    app.logger.error('%s', error)
+    return jsonify({
+        'status': 'error',
+        'message': 'Database temporarily unavailable',
+    }), 503
 
 
-# ---------------------------------------------------------------------------
-# Routes
-# ---------------------------------------------------------------------------
+def _is_admin_request():
+    """Check the admin bearer token without exposing it in a URL."""
+    if not ADMIN_TOKEN:
+        return False
+    authorization = request.headers.get('Authorization', '')
+    supplied_token = authorization.removeprefix('Bearer ').strip()
+    return hmac.compare_digest(supplied_token, ADMIN_TOKEN)
+
+
 @app.route('/')
 def index():
-    """Serve the main game page."""
     return render_template('index.html')
 
 
 @app.route('/favicon.ico')
 def favicon():
-    """Serve favicon.ico directly for browsers requesting default favicon."""
-    return send_from_directory(os.path.join(app.root_path, 'static'),
-                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
+    return send_from_directory(
+        os.path.join(app.root_path, 'static'),
+        'favicon.ico',
+        mimetype='image/vnd.microsoft.icon',
+    )
 
 
 @app.route('/api/score', methods=['POST'])
 def submit_score():
-    """Accept a score submission and return the player's rank."""
     data = request.get_json(silent=True)
     if not data:
         return jsonify({'status': 'error', 'message': 'No JSON payload'}), 400
 
     required_fields = [
         'player_name', 'score', 'apogee',
-        'altitude_accuracy', 'touchdown_speed', 'damage_amount', 'failure_type', 'status',
+        'altitude_accuracy', 'touchdown_speed', 'damage_amount',
+        'failure_type', 'status',
     ]
     for field in required_fields:
         if field not in data:
@@ -154,107 +148,106 @@ def submit_score():
     if status not in {'LANDED', 'DAMAGED', 'CRASHED'}:
         return jsonify({'status': 'error', 'message': 'Invalid status'}), 400
 
-    db = get_db()
-    cursor = db.execute(
-        '''INSERT INTO scores
-           (player_name, score, apogee, altitude_accuracy,
-            touchdown_speed, damage_amount, failure_type, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-        (
-            player_name[:20] or 'Anonymous',
-            score,
-            apogee,
-            altitude_accuracy,
-            touchdown_speed,
-            damage_amount,
-            failure_type,
-            status,
-        ),
-    )
-    db.commit()
+    payload = {
+        'player_name': player_name,
+        'score': score,
+        'apogee': apogee,
+        'altitude_accuracy': altitude_accuracy,
+        'touchdown_speed': touchdown_speed,
+        'damage_amount': damage_amount,
+        'failure_type': failure_type,
+        'status': status,
+    }
+    try:
+        inserted, _ = _supabase_request(
+            'POST',
+            payload=payload,
+            prefer='return=representation',
+        )
+        higher_scores, headers = _supabase_request(
+            'GET',
+            query={
+                'select': 'id',
+                'score': f'gt.{score}',
+                'limit': '1',
+            },
+            prefer='count=exact',
+        )
+        content_range = headers.get('Content-Range', '')
+        total_higher = int(content_range.rsplit('/', 1)[1]) if '/' in content_range else len(higher_scores)
+    except (RuntimeError, ValueError) as error:
+        return _database_error_response(error)
 
-    rank = db.execute(
-        'SELECT COUNT(*) FROM scores WHERE score > ?',
-        (score,),
-    ).fetchone()[0] + 1
-
-    return jsonify({'status': 'success', 'score_id': cursor.lastrowid, 'rank': rank})
-
-
-def _is_admin_request():
-    """Check the bearer token without exposing it in a URL or response."""
-    if not ADMIN_TOKEN:
-        return False
-    authorization = request.headers.get('Authorization', '')
-    supplied_token = authorization.removeprefix('Bearer ').strip()
-    return hmac.compare_digest(supplied_token, ADMIN_TOKEN)
+    score_id = inserted[0].get('id') if inserted else None
+    return jsonify({
+        'status': 'success',
+        'score_id': score_id,
+        'rank': total_higher + 1,
+    })
 
 
 @app.route('/api/admin/scores', methods=['GET'])
 def admin_scores():
-    """Return score IDs for short-term moderation."""
     if not _is_admin_request():
         return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
-
-    rows = get_db().execute(
-        '''SELECT id, player_name, score, created_at
-           FROM scores ORDER BY created_at DESC LIMIT 100'''
-    ).fetchall()
-    return jsonify({
-        'status': 'success',
-        'scores': [dict(row) for row in rows],
-    })
+    try:
+        rows, _ = _supabase_request(
+            'GET',
+            query={
+                'select': 'id,player_name,score,created_at',
+                'order': 'created_at.desc',
+                'limit': '100',
+            },
+        )
+    except RuntimeError as error:
+        return _database_error_response(error)
+    return jsonify({'status': 'success', 'scores': rows})
 
 
 @app.route('/api/admin/scores/<int:score_id>', methods=['DELETE'])
 def delete_score(score_id):
-    """Delete one score from the active temporary SQLite instance."""
     if not _is_admin_request():
         return jsonify({'status': 'error', 'message': 'Unauthorized'}), 401
-
-    cursor = get_db().execute('DELETE FROM scores WHERE id = ?', (score_id,))
-    get_db().commit()
-    if cursor.rowcount == 0:
+    try:
+        deleted, _ = _supabase_request(
+            'DELETE',
+            path=f'?id=eq.{score_id}',
+            prefer='return=representation',
+        )
+    except RuntimeError as error:
+        return _database_error_response(error)
+    if not deleted:
         return jsonify({'status': 'error', 'message': 'Score not found'}), 404
     return jsonify({'status': 'success', 'deleted_id': score_id})
 
 
 @app.route('/api/leaderboard')
 def leaderboard():
-    """Return the top-10 scores in descending order."""
-    db = get_db()
-    rows = db.execute(
-        'SELECT * FROM scores ORDER BY score DESC LIMIT 10'
-    ).fetchall()
+    try:
+        rows, _ = _supabase_request(
+            'GET',
+            query={
+                'select': (
+                    'id,player_name,score,apogee,altitude_accuracy,'
+                    'touchdown_speed,damage_amount,failure_type,status,created_at'
+                ),
+                'order': 'score.desc',
+                'limit': '10',
+            },
+        )
+    except RuntimeError as error:
+        return _database_error_response(error)
 
     entries = []
-    for i, row in enumerate(rows, 1):
-        entries.append({
-            'rank':              i,
-            'player_name':       row['player_name'],
-            'score':             row['score'],
-            'apogee':            row['apogee'],
-            'altitude_accuracy': row['altitude_accuracy'],
-            'touchdown_speed':   row['touchdown_speed'],
-            'damage_amount':     row['damage_amount'],
-            'failure_type':      row['failure_type'],
-            'status':            row['status'],
-            'created_at':        row['created_at'],
-        })
-
+    for rank, row in enumerate(rows, 1):
+        entries.append({'rank': rank, **row})
     return jsonify({'status': 'success', 'leaderboard': entries})
 
 
 @app.route('/api/health')
 def health():
-    """Simple health-check endpoint."""
     return jsonify({'status': 'healthy', 'game': 'Thrust The Rocket v1.0'})
 
 
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 if __name__ == '__main__':
-    init_db()
     app.run(host='0.0.0.0', port=5000, debug=True)
-    app.run(debug=True, host='0.0.0.0', port=5001)

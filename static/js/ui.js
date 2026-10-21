@@ -27,6 +27,7 @@ export class UIManager {
 
             actionPrompt:    document.getElementById('action-prompt'),
             actionText:      document.getElementById('action-prompt-text'),
+            padSteerHint:    document.getElementById('pad-steer-hint'),
 
             countdownOverlay: document.getElementById('countdown-overlay'),
             countdownNumber:  document.getElementById('countdown-number'),
@@ -307,6 +308,14 @@ export class UIManager {
     hideActionPrompt() {
         this.els.actionPrompt.classList.add('hidden');
         this.els.actionPrompt.classList.remove('urgent');
+    }
+
+    showPadSteerHint() {
+        this.els.padSteerHint.classList.remove('hidden');
+    }
+
+    hidePadSteerHint() {
+        this.els.padSteerHint.classList.add('hidden');
     }
 
     /* ================================================================== */

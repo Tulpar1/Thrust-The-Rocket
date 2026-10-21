@@ -118,16 +118,16 @@ html, body {
     z-index: 10;
 }
 
-.flight-apply-btn {
+.debrief-apply-btn.flight-apply-btn {
     position: fixed;
     right: calc(12px + var(--safe-right));
     bottom: calc(12px + var(--safe-bottom));
     z-index: 20;
     width: auto;
-    min-width: 148px;
-    height: 36px;
-    min-height: 36px;
-    padding: 0 14px;
+    min-width: 150px;
+    height: 30px;
+    min-height: 30px;
+    padding: 0 10px;
     pointer-events: auto;
     font-size: 0.68rem;
     white-space: nowrap;
@@ -343,6 +343,36 @@ html, body {
 .action-prompt.urgent span {
     color: #FFAAAA;
     text-shadow: none;
+}
+
+.pad-steer-hint {
+    position: fixed;
+    top: 23%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 13;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    pointer-events: none;
+    opacity: 0.88;
+    color: #D8DEE8;
+    text-align: center;
+}
+
+.pad-steer-hint span {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+}
+
+.pad-steer-hint small {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
 }
 
 /* ---------- Countdown ---------- */

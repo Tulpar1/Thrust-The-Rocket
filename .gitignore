@@ -2,3 +2,17 @@ scores.db
 Notes.txt
 generate_countdown_voice.py
 __pycache__/
+
+# Local environment files and secrets
+.env
+.env.*
+!.env.example
+
+# Python cache and local tooling
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Vercel local project metadata
+.vercel/
