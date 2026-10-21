@@ -340,7 +340,7 @@ class GameEngine {
                 this.chutePenalty += 1500;
                 this.physics.wind.active = true;
                 this.ui.showSteeringArrows();
-                this.ui.showActionPrompt('MISSED DROGUE! RAPID TUMBLE DIVE', true);
+                this.ui.showActionPrompt('MISSED DROGUE! FREEFALL', true);
                 break;
 
             case STATE.MAIN_READY:
@@ -389,7 +389,7 @@ class GameEngine {
                 if (this.finalVy <= PHYSICS.SAFE_LANDING_VY) {
                     this.audio.playSuccessChime();
                     this.particles.emitConfetti(this.rocket.x, 0);
-                    this.ui.showActionPrompt(`Kusursuz İniş! Hız: ${this.finalVy.toFixed(1)} ft/s · Hedef Sapması: ${touchdownOffset.toFixed(0)} ft`, false);
+                    this.ui.showActionPrompt(`Kusursuz İniş! Hız: ${this.finalVy.toFixed(1)} ft/s`, false);
                 } else {
                     this.particles.emitDebris(this.rocket.x, 0, 4);
                     this.particles.emitSparks(this.rocket.x, 0);
@@ -577,6 +577,7 @@ class GameEngine {
 
             case STATE.ASCENT:
                 this.camera.setFollowPreset(this.rocket.x, this.rocket.y, this.rocket.vy);
+                this.particles.emitWindFlow(this.rocket.x, this.rocket.y, this.physics.wind.currentForce);
 
                 this.particles.emitExhaust(this.rocket.x, this.rocket.y, this.rocket.angle, 1.0);
                 this.particles.emitSmoke(this.rocket.x, this.rocket.y);
@@ -600,7 +601,8 @@ class GameEngine {
                 break;
 
             case STATE.COASTING:
-                this.camera.setFollowPreset(this.rocket.x, this.rocket.y, this.rocket.vy);
+                this.camera.setCoastingPreset(this.rocket.x, this.rocket.y, this.rocket.vy);
+                this.particles.emitWindFlow(this.rocket.x, this.rocket.y, this.physics.wind.currentForce);
 
                 this.particles.emitSmokeTrail(this.rocket.x, this.rocket.y);
                 if (Math.abs(this.rocket.vy) > 80) {
@@ -651,6 +653,7 @@ class GameEngine {
 
             case STATE.DROGUE_DEPLOYED:
                 this.camera.setDescentPreset(this.rocket.x, this.rocket.y);
+                this.particles.emitWindFlow(this.rocket.x, this.rocket.y, this.physics.wind.currentForce);
 
                 if (Math.abs(this.rocket.vy) > 80) {
                     this.particles.emitWindStreaks(this.rocket.x, this.rocket.y, Math.abs(this.rocket.vy), this.rocket.vy);
@@ -671,6 +674,7 @@ class GameEngine {
 
             case STATE.FREEFALL:
                 this.camera.setDescentPreset(this.rocket.x, this.rocket.y);
+                this.particles.emitWindFlow(this.rocket.x, this.rocket.y, this.physics.wind.currentForce);
 
                 this.particles.emitWindStreaks(this.rocket.x, this.rocket.y, Math.abs(this.rocket.vy), this.rocket.vy);
 
@@ -689,6 +693,7 @@ class GameEngine {
 
             case STATE.MAIN_READY:
                 this.camera.setDescentPreset(this.rocket.x, this.rocket.y);
+                this.particles.emitWindFlow(this.rocket.x, this.rocket.y, this.physics.wind.currentForce);
 
                 if (Math.abs(this.rocket.vy) > 80) {
                     this.particles.emitWindStreaks(this.rocket.x, this.rocket.y, Math.abs(this.rocket.vy), this.rocket.vy);
@@ -720,11 +725,12 @@ class GameEngine {
 
             case STATE.MAIN_DEPLOYED:
                 this.camera.setDescentPreset(this.rocket.x, this.rocket.y);
+                this.particles.emitWindFlow(this.rocket.x, this.rocket.y, this.physics.wind.currentForce);
 
                 this.ui.updateHUD({
                     altitude: this.rocket.y,
                     speed:    this.rocket.vy,
-                    stage:    `STAGE 3: FINAL · STEERING LOCKED (TARGET: ${Math.abs(this.rocket.x - (this.rocket.targetPadX || this.rocket.randomPadX || 0)).toFixed(0)} FT)`,
+                    stage:    `STAGE 3: MAIN DESCENT`,
                     wind:     this.physics.wind.currentForce,
                     apogee:   this.apogee,
                 });

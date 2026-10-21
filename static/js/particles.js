@@ -153,6 +153,36 @@ export class ParticleSystem {
     }
 
     /**
+     * Visible lateral wind flow around the rocket.
+     * @param {number} x – rocket X
+     * @param {number} y – rocket Y
+     * @param {number} force – signed wind force
+     */
+    emitWindFlow(x, y, force) {
+        const strength = Math.abs(force);
+        if (strength < 1.5) return;
+
+        const direction = force > 0 ? 1 : -1;
+        const count = Math.min(5, Math.max(2, Math.floor(strength / 5)));
+        for (let i = 0; i < count; i++) {
+            const p = this._get();
+            if (!p) return;
+            const speed = 35 + strength * 4;
+            p.init(
+                x - direction * _rand(20, 75) + _rand(-10, 10),
+                y + _rand(-55, 55),
+                direction * _rand(speed * 0.75, speed * 1.25),
+                _rand(-4, 4),
+                _rand(0.35, 0.7),
+                _rand(1.2, 2.4),
+                [150, 215, 255],
+                'streak',
+                { alpha: 0.55, gravity: 0, drag: 0.01 }
+            );
+        }
+    }
+
+    /**
      * Re-entry glow around nose during fast descent.
      */
     emitReentryGlow(x, y, speed) {

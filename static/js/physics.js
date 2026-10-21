@@ -30,12 +30,12 @@ export const PHYSICS = {
 
     // 2. Drogue (Stabilizasyon) Paraşütü
     DROGUE_HEDEF_HIZ: 90.0,
-    DROGUE_FRENLEME_GUCU: 1.45,
-    DROGUE_SISME_SURESI: 0.9,
+    DROGUE_FRENLEME_GUCU: 1.25,
+    DROGUE_SISME_SURESI: 1.0,
 
     // 2. Ana Paraşüt (Yönlendirme cezasında bile güvenli inebilmesi için ufak revize)
     PARASUT_HEDEF_HIZ: 16.5,        // 18.0 yerine 16.5 (Steer yapınca 16.5 * 1.25 = 20.6 ft/s olur, 22'nin altında kalır!)
-    PARASUT_FRENLEME_GUCU: 1.25,    // 1.15 yerine 1.25 (İrtifa kaybını dengeler)
+    PARASUT_FRENLEME_GUCU: 0.9,    // 1.15 yerine 1.25 (İrtifa kaybını dengeler)
     PARASUT_SISME_SURESI: 1.4,      // 1.4 sn (Önerilen değer - ağır ve gerçekçi açılış hissi) (Kanopinin dolma süresi)
 
     // 4. İniş Eşikleri (Yere Temas Toleransları)

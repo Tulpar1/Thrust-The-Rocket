@@ -1447,14 +1447,31 @@ html, body {
     }
 }
 
-/* Mobile Portrait: Keep telemetry ultra-compact and close to top, hide brand badge to prevent deep vertical descent */
+/* Mobile Portrait: Keep telemetry compact while preserving mission controls */
 @media (max-width: 767px) {
     .hud {
         padding: calc(6px + var(--safe-top)) calc(8px + var(--safe-right)) 4px calc(8px + var(--safe-left));
     }
 
     .hud-brand-item {
-        display: none;
+        display: inline-flex;
+        padding: 3px 6px;
+        gap: 4px;
+    }
+
+    .hud-logo-mini {
+        height: 13px;
+    }
+
+    .hud-brand-tag {
+        font-size: 0.48rem;
+        letter-spacing: 0.06em;
+    }
+
+    .flight-retry-btn {
+        margin-left: 3px;
+        padding: 4px 5px;
+        font-size: 0.48rem;
     }
 
     .hud-left,

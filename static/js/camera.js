@@ -136,6 +136,24 @@ export class Camera {
         }
     }
 
+    /** Follow the slowing rocket after engine cutoff with a closer flight frame. */
+    setCoastingPreset(rocketX, rocketY, rocketVy = 0) {
+        if (rocketY === undefined) { rocketY = rocketX; rocketX = 0; }
+        this.targetX = rocketX;
+        this.targetY = rocketY;
+
+        if (rocketY < 500) {
+            const t = Math.max(0, rocketY / 500);
+            this.targetZoom = 2.70 - t * (2.70 - 1.55);
+        } else {
+            const speed = Math.min(500, Math.abs(rocketVy));
+            const slowDown = 1 - speed / 500;
+            this.targetZoom = 1.55 + slowDown * 0.35;
+        }
+
+        this.lerpSpeed = 4.5;
+    }
+
     /** Keep camera focused on the rocket at apogee with zero jump and rock-solid lock. */
     setApogeePreset(rocketX, rocketY) {
         if (rocketY === undefined) { rocketY = rocketX; rocketX = 0; }
