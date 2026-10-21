@@ -504,7 +504,7 @@ class GameEngine {
                         const randomVariance = (Math.random() * 0.10) - 0.05;
                         this.rocket.thrustFactor = 1.0 + randomVariance;
                         const failureRoll = Math.random();
-                        this.failureType = failureRoll < 1.0 ? 'AVIONICS' : failureRoll < 0.0 ? 'NONE' : 'NONE';
+                        this.failureType = failureRoll < 0.10 ? 'AVIONICS' : failureRoll < 0.20 ? 'FIN_FLUTTER' : 'NONE';
                         this.rocket.failureType = this.failureType;
                         this.rocket.avionicsFailed = this.failureType === 'AVIONICS';
                         this.rocket.flutterActive = this.failureType === 'FIN_FLUTTER';
